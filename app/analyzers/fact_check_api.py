@@ -286,6 +286,53 @@ CONFIRM_TITLE_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+VEHICLE_FORM_MAP: dict[str, set[str]] = {
+    "adesivo": {"adesivo", "adesivos", "patch", "patches", "transdérmico", "transdérmica", "transdermico", "transdermica"},
+    "adesivos": {"adesivo", "adesivos", "patch", "patches", "transdérmico", "transdérmica", "transdermico", "transdermica"},
+    "patch": {"adesivo", "adesivos", "patch", "patches", "transdérmico", "transdérmica", "transdermico", "transdermica"},
+    "patches": {"adesivo", "adesivos", "patch", "patches", "transdérmico", "transdérmica", "transdermico", "transdermica"},
+    "pomada": {"pomada", "pomadas", "creme", "cremes", "gel", "tópico", "tópica", "topico", "topica"},
+    "pomadas": {"pomada", "pomadas", "creme", "cremes", "gel", "tópico", "tópica", "topico", "topica"},
+    "creme": {"creme", "cremes", "pomada", "pomadas", "gel", "tópico", "tópica", "topico", "topica"},
+    "cremes": {"creme", "cremes", "pomada", "pomadas", "gel", "tópico", "tópica", "topico", "topica"},
+    "gel": {"gel", "pomada", "pomadas", "creme", "cremes", "tópico", "tópica", "topico", "topica"},
+    "chá": {"chá", "chas", "cha", "infusão", "infusao", "erva", "ervas"},
+    "chas": {"chá", "chas", "cha", "infusão", "infusao", "erva", "ervas"},
+    "cha": {"chá", "chas", "cha", "infusão", "infusao", "erva", "ervas"},
+    "gotas": {"gota", "gotas", "líquido", "liquido", "solução", "solucao", "xarope", "xaropes"},
+    "gota": {"gota", "gotas", "líquido", "liquido", "solução", "solucao", "xarope", "xaropes"},
+    "xarope": {"xarope", "xaropes", "solução", "solucao", "gota", "gotas"},
+    "cápsula": {"cápsula", "cápsulas", "capsula", "capsulas", "comprimido", "comprimidos", "pílula", "pílulas", "pilula", "pilulas"},
+    "cápsulas": {"cápsula", "cápsulas", "capsula", "capsulas", "comprimido", "comprimidos", "pílula", "pílulas", "pilula", "pilulas"},
+    "capsula": {"cápsula", "cápsulas", "capsula", "capsulas", "comprimido", "comprimidos", "pílula", "pílulas", "pilula", "pilulas"},
+    "capsulas": {"cápsula", "cápsulas", "capsula", "capsulas", "comprimido", "comprimidos", "pílula", "pílulas", "pilula", "pilulas"},
+    "comprimido": {"comprimido", "comprimidos", "cápsula", "cápsulas", "capsula", "capsulas", "pílula", "pílulas", "pilula", "pilulas"},
+    "comprimidos": {"comprimido", "comprimidos", "cápsula", "cápsulas", "capsula", "capsulas", "pílula", "pílulas", "pilula", "pilulas"},
+    "pílula": {"pílula", "pílulas", "pilula", "pilulas", "comprimido", "comprimidos", "cápsula", "cápsulas"},
+    "injeção": {"injeção", "injeções", "injecao", "injecoes", "injetável", "injetáveis", "injetavel", "injetaveis", "caneta", "canetas", "ampola", "ampolas", "subcutânea", "subcutanea"},
+    "injeções": {"injeção", "injeções", "injecao", "injecoes", "injetável", "injetáveis", "injetavel", "injetaveis", "caneta", "canetas", "ampola", "ampolas", "subcutânea", "subcutanea"},
+    "injetável": {"injeção", "injeções", "injecao", "injecoes", "injetável", "injetáveis", "injetavel", "injetaveis", "caneta", "canetas", "ampola", "ampolas", "subcutânea", "subcutanea"},
+    "injetáveis": {"injeção", "injeções", "injecao", "injecoes", "injetável", "injetáveis", "injetavel", "injetaveis", "caneta", "canetas", "ampola", "ampolas", "subcutânea", "subcutanea"},
+    "caneta": {"caneta", "canetas", "injeção", "injeções", "injetável", "injetáveis", "ampola", "ampolas", "subcutânea", "subcutanea"},
+    "canetas": {"caneta", "canetas", "injeção", "injeções", "injetável", "injetáveis", "ampola", "ampolas", "subcutânea", "subcutanea"},
+    "spray": {"spray", "sprays", "aerossol", "inalador"},
+}
+
+POLICE_CRIME_PATTERNS = re.compile(
+    r"\b(?:polícia federal|pf|polícia civil|mandados de busca|quadrilha|apreende|apreensão|presos|preso|laboratório clandestino)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_vehicle_forms(text: str) -> set[str]:
+    """Identifica veículos físicos, formas farmacêuticas ou modalidades de administração em um texto."""
+    words = set(re.findall(r"\b[a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]+\b", text.lower()))
+    detected: set[str] = set()
+    for w in words:
+        if w in VEHICLE_FORM_MAP:
+            detected.update(VEHICLE_FORM_MAP[w])
+    return detected
+
 
 META_DEBUNK_PREFIX = re.compile(
     r"^(?:(?:fato ou fake|uol confere|comprova|estadao verifica|estadão verifica|aos fatos|lupa|afp checamos|afp|boatos\.org)\s*[:\-]\s*)?"
@@ -418,10 +465,11 @@ def extract_salient_entities(text: str) -> list[str]:
 def build_search_queries(claim: str, original_text: str | None = None) -> list[str]:
     """
     Gera consultas multi-termo inteligentes para maximizar a revocação nas APIs de checagem:
-    1. Pares semânticos entidade + tópico (ex: 'mounjaro adesivo', 'mounjaro diabetes')
-    2. Bigramas substantivos essenciais
-    3. Entidades salientes substantivas (com comprimento mínimo para evitar ruído)
-    4. Frase concisa limpa
+    1. Se houver veículo físico/farmacêutico explícito (ex: 'adesivo', 'chá', 'pomada'),
+       gera pares estritos vinculando a substância/sujeito ao veículo (ex: 'mounjaro adesivo').
+    2. Pares semânticos entidade + tokens substantivos.
+    3. Bigramas substantivos essenciais.
+    4. Frase concisa limpa.
     """
     queries: list[str] = []
     clean_c = clean_reviewed_claim(claim)
@@ -433,35 +481,55 @@ def build_search_queries(claim: str, original_text: str | None = None) -> list[s
 
     tokens = extract_substantive_tokens(base_q)
     salient_tokens = [t for t in tokens if t not in COMMON_VERBS_AND_FILLER and len(t) >= 4]
+    claim_vehicles = extract_vehicle_forms(base_q)
 
-    # 1. Pares semânticos entidade + tokens substantivos (mais específicos e precisos)
-    for ent in entities:
-        for t in salient_tokens:
-            if t not in ent and len(t) >= 4:
-                comb = f"{ent} {t}"
+    # 1. Regra de precisão temática: Se a alegação possui veículo específico, amarra as queries ao veículo
+    if claim_vehicles:
+        vehicle_word = next((t for t in tokens if t in VEHICLE_FORM_MAP), None)
+        if not vehicle_word:
+            vehicle_word = next(iter(claim_vehicles))
+
+        # Gera conjunções estritas de entidades substantivas com o veículo
+        for ent in entities:
+            if ent != vehicle_word and ent not in claim_vehicles:
+                comb = f"{ent} {vehicle_word}"
                 if comb not in queries:
                     queries.append(comb)
 
-    # 2. Bigramas substantivos essenciais
-    if len(salient_tokens) >= 2:
-        pair1 = f"{salient_tokens[0]} {salient_tokens[1]}"
-        if pair1 not in queries:
-            queries.append(pair1)
-    if len(salient_tokens) >= 3:
-        pair2 = f"{salient_tokens[1]} {salient_tokens[2]}"
-        if pair2 not in queries:
-            queries.append(pair2)
+        # Bigrama substantivo inicial se existir
+        if len(salient_tokens) >= 2:
+            pair1 = f"{salient_tokens[0]} {salient_tokens[1]}"
+            if pair1 not in queries:
+                queries.append(pair1)
+    else:
+        # Pares semânticos entidade + tokens substantivos
+        for ent in entities:
+            for t in salient_tokens:
+                if t not in ent and len(t) >= 4:
+                    comb = f"{ent} {t}"
+                    if comb not in queries:
+                        queries.append(comb)
 
-    # 3. Entidade saliente isolada (apenas se for termo substantivo com len >= 5 e não for preenchimento)
-    for ent in entities:
-        if len(ent) >= 5 and ent not in COMMON_VERBS_AND_FILLER and ent not in queries:
-            queries.append(ent)
+        # Bigramas substantivos essenciais
+        if len(salient_tokens) >= 2:
+            pair1 = f"{salient_tokens[0]} {salient_tokens[1]}"
+            if pair1 not in queries:
+                queries.append(pair1)
+        if len(salient_tokens) >= 3:
+            pair2 = f"{salient_tokens[1]} {salient_tokens[2]}"
+            if pair2 not in queries:
+                queries.append(pair2)
 
-    # 4. Frase concisa limpa (se curta e substantiva)
+        # Entidade saliente isolada (apenas quando não houver veículo específico que exija conjunção)
+        for ent in entities:
+            if len(ent) >= 5 and ent not in COMMON_VERBS_AND_FILLER and ent not in queries:
+                queries.append(ent)
+
+    # Frase concisa limpa (se curta e substantiva)
     if base_q and len(base_q.split()) <= 6 and base_q not in queries:
         queries.append(base_q)
 
-    # 5. Frase original se fornecida e concisa
+    # Frase original se fornecida e concisa
     if original_text and original_text.strip():
         clean_orig = clean_reviewed_claim(original_text).strip()
         if clean_orig and len(clean_orig.split()) <= 6 and clean_orig not in queries:
@@ -477,11 +545,15 @@ def check_evidence_relevance(claim: str, evidence_text: str, original_text: str 
     """
     Verifica se a evidência trata especificamente do mesmo assunto da alegação,
     evitando falsos positivos gerados por notícias tangenciais ou coincidentes.
-    Regra central:
-    - Para qualquer alegação com 2 ou mais termos substantivos, a evidência DEVE
-      conter no mínimo 2 termos substantivos coincidentes (evitando que uma menção
-      isolada a 'adesivo' ou isolada a 'mounjaro' puxe notícias não relacionadas).
-    - Para alegações curtas com apenas 1 termo substantivo, exige coincidência desse termo.
+    Regras estritas (Estruturais e Léxicas):
+    1. Veículo / Apresentação Física: Se a alegação afirma a existência ou efeito de uma forma
+       física específica (adesivo, chá, pomada, cápsula, injeção, gotas, etc.), a evidência
+       OBRIGATORIAMENTE deve citar o veículo da alegação (ou família equivalente) ou explicitar
+       incompatibilidade farmacológica oficial de via (ex: droga puramente injetável).
+    2. Notícias Policiais/Crimes: Matérias estritamente policiais (operações da PF, apreensão de
+       quadrilhas em laboratórios clandestinos) são rejeitadas se não citarem o veículo da alegação.
+    3. Coincidência de Termos Distintivos: Alegações com termos substantivos específicos exigem
+       coincidência nos termos nucleares.
     """
     clean_c = clean_reviewed_claim(claim)
     target_text = clean_c if clean_c else (clean_reviewed_claim(original_text) if original_text else "")
@@ -507,6 +579,25 @@ def check_evidence_relevance(claim: str, evidence_text: str, original_text: str 
 
     ev_tokens = set(extract_substantive_tokens(evidence_text))
     ev_text_lower = evidence_text.lower()
+    ev_words = set(re.findall(r"\b[a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]+\b", ev_text_lower))
+
+    # Regra 1: Validação estrita de veículo / apresentação física
+    claim_vehicles = extract_vehicle_forms(target_text)
+    if claim_vehicles:
+        has_vehicle_match = bool(claim_vehicles & ev_words)
+        # Confronto oficial de rota (ex: bula oficial alertando que droga é exclusivamente injetável/subcutânea)
+        has_route_confrontation = bool(
+            any(w in ev_words for w in ("subcutânea", "subcutanea", "injetável", "injetavel", "injeção", "injecao"))
+            and any(dt in ev_tokens for dt in [t for t in claim_tokens if t not in GENERIC_HEALTH_EFFECTS and t not in claim_vehicles])
+            and any(w in ev_text_lower for w in ("exclusivamente", "oficial", "incompatibilidade", "não existe", "monografia"))
+        )
+        if not has_vehicle_match and not has_route_confrontation:
+            return False
+
+    # Regra 2: Rejeição de notícias policiais e criminais genéricas desconectadas da alegação
+    if POLICE_CRIME_PATTERNS.search(evidence_text) and not POLICE_CRIME_PATTERNS.search(target_text):
+        if claim_vehicles and not (claim_vehicles & ev_words):
+            return False
 
     def _token_match(ct: str) -> bool:
         if ct in ev_tokens:
@@ -641,7 +732,7 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             elif len(parts) == 1 and len(t) >= 5 and t.lower() not in COMMON_VERBS_AND_FILLER and t.lower() not in STOP_WORDS_PT:
                 valid_terms.append(t)
 
-        candidate_terms = sorted(valid_terms, key=lambda t: len(t.split()))
+        candidate_terms = sorted(valid_terms, key=lambda t: (0 if len(t.split()) >= 2 else 1, -len(t.split())))
         tasks = [_query_api(term, lang="pt-BR") for term in candidate_terms[:4]]
         if candidate_terms:
             tasks.append(_query_api(candidate_terms[0], lang=None))
@@ -693,9 +784,18 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             entities = list(dict.fromkeys(entities + extract_salient_entities(original_text)))
 
         # Define o núcleo temático para a busca lateral
+        claim_vehicles = extract_vehicle_forms(query)
         candidate_terms = [t for t in search_terms if len(t.split()) <= 4]
-        # Prioriza termo composto substantivo para garantir precisão temática
-        compound_candidate = next((t for t in candidate_terms if len(t.split()) >= 2), None)
+        # Se houver veículo, prioriza o termo que amarra entidade + veículo
+        if claim_vehicles:
+            vehicle_candidate = next(
+                (t for t in candidate_terms if any(v in t.lower() for v in claim_vehicles)),
+                None,
+            )
+            compound_candidate = vehicle_candidate or next((t for t in candidate_terms if len(t.split()) >= 2), None)
+        else:
+            compound_candidate = next((t for t in candidate_terms if len(t.split()) >= 2), None)
+
         primary_entity = entities[0] if entities else ""
         core_query = compound_candidate or primary_entity or (candidate_terms[0] if candidate_terms else query)
 
@@ -709,7 +809,12 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
 
         tasks = []
         # 1. Consulta geral concisa com os principais termos-chave (restrita a domínios confiáveis)
-        for term in candidate_terms[:2]:
+        filtered_candidates = [
+            term for term in candidate_terms
+            if (not claim_vehicles or any(v in term.lower() for v in claim_vehicles))
+        ]
+        active_candidates = filtered_candidates if filtered_candidates else candidate_terms
+        for term in active_candidates[:2]:
             clean_q = re.sub(r"[\"']", "", term)
             query_with_site = f"{clean_q[:80]} {TRUSTED_SITE_FILTER}"
             encoded_query = urllib.parse.quote(query_with_site)
@@ -1193,9 +1298,16 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                 rating = "Uso Terapêutico para Controle (Não Há Cura)"
                 stance = "REFUTES"
 
-            snippet_augmented = (
-                f"Ficha Farmacológica Oficial [{title} / {cand_title}]: {extract}"
-            )
+            if stance == "REFUTES" and rating.startswith("Incompatibilidade"):
+                snippet_augmented = (
+                    f"Incompatibilidade Farmacológica Crítica [{title} / {cand_title}]: "
+                    f"A via oficial aprovada é exclusivamente subcutânea/injetável, inexistindo formulação transdérmica em adesivo. "
+                    f"{extract}"
+                )
+            else:
+                snippet_augmented = (
+                    f"Ficha Farmacológica Oficial [{title} / {cand_title}]: {extract}"
+                )
 
             evidences.append(
                 EvidenceItem(

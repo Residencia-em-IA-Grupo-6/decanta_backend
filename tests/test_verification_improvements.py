@@ -825,6 +825,69 @@ async def test_wikipedia_pharmacological_route_refutation():
     assert ev.stance == "REFUTES"
 
 
+def test_vehicle_and_police_rejection_rules():
+    """Valida as regras determinísticas de filtro de veículo/apresentação física e rejeição de notícias policiais genéricas."""
+    claim = "Existe adesivo emagrecedor com Mounjaro à venda por 39 reais"
+
+    # Falso positivo crítico da PF que antes era aceito por coincidência de 'mounjaro' + 'emagrecer'
+    pf_operacao = (
+        "Operação da Polícia Federal cumpre mandados de busca contra quadrilha que falsificava "
+        "remédios para emagrecer como Mounjaro e Ozempic em laboratório clandestino."
+    )
+    assert check_evidence_relevance(claim, pf_operacao) is False
+
+    # Outras matérias sem o veículo alegado
+    uol_aprovacao = "Anvisa aprova venda de Mounjaro em farmácias do Brasil para diabetes e perda de peso"
+    assert check_evidence_relevance(claim, uol_aprovacao) is False
+
+    estadao_efeitos = "Médicos alertam para os principais efeitos colaterais do Mounjaro injetável"
+    assert check_evidence_relevance(claim, estadao_efeitos) is False
+
+    # Matérias legítimas que tratam especificamente do boato e mencionam o veículo
+    g1_golpe = "G1: Golpe do adesivo emagrecedor com Mounjaro falso usa imagem de médicos na internet"
+    assert check_evidence_relevance(claim, g1_golpe) is True
+
+    anvisa_adesivo = "Anvisa alerta sobre venda fraudulenta de adesivo de Mounjaro por R$ 39 reais"
+    assert check_evidence_relevance(claim, anvisa_adesivo) is True
+
+
+def test_build_search_queries_binds_vehicle_when_present():
+    """Valida que build_search_queries amarra o sujeito ao veículo físico e não gera termos soltos genéricos."""
+    from app.analyzers.fact_check_api import build_search_queries
+
+    claim = "Existe adesivo emagrecedor com Mounjaro à venda por 39 reais"
+    queries = build_search_queries(claim)
+
+    # Deve conter a conjunção exata do sujeito com o veículo
+    assert "mounjaro adesivo" in queries
+    # Não deve gerar queries soltas que busquem apenas a droga sem o veículo
+    assert "mounjaro" not in queries
+
+
+@pytest.mark.asyncio
+async def test_check_single_claim_strictly_discards_pf_raid():
+    """Valida que check_single_claim descarta sumariamente a matéria da PF e não a inclui nas evidências nem fontes."""
+    analyzer = FactCheckApiAnalyzer()
+
+    pf_ev = EvidenceItem(
+        title="Operação da PF desarticula quadrilha de Mounjaro em laboratório clandestino",
+        source_name="G1 Notícias",
+        url="https://g1.globo.com/pf-mounjaro",
+        snippet="Polícia Federal cumpre mandados contra quadrilha que falsificava remédios como Mounjaro para emagrecer.",
+        rating=None,
+        is_fact_check=False,
+    )
+
+    result = await analyzer.check_single_claim(
+        "Existe adesivo emagrecedor com Mounjaro à venda por 39 reais",
+        extra_evidences=[pf_ev],
+    )
+
+    # A notícia da PF NÃO DEVE estar presente nas evidências nem nas fontes
+    assert not any("pf" in e.get("title", "").lower() or "quadrilha" in e.get("title", "").lower() for e in result["evidences"])
+    assert not any("laboratório clandestino" in s.lower() or "pf-mounjaro" in s.lower() for s in result["sources"])
+
+
 
 
 
