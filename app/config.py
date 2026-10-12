@@ -30,14 +30,18 @@ class Settings(BaseSettings):
     ONNX_GATEKEEPER_ENABLED: bool = True
     ONNX_MODEL_DIR: str = "models"
 
-    # Classificação temática legada via Plumb-4B (Decision-Making via JevK5)
-    PLUMB_ENABLED: bool = False
-    PLUMB_MODEL_NAME: str = "crh225/plumb-4b"
-    PLUMB_DEVICE: str = "mps"
+    # Motor Epistêmico de Decisão Local: JevK5-Lite (CPU 437M)
+    DECISION_MODEL_ENABLED: bool = True
+    DECISION_MODEL_PATH: str = "models/jevk5_lite"
+    DECISION_MODEL_NAME: str = "alibiserikbay/JevK5-Lite"
+    DECISION_THREADS: int = 6
 
-    # Retrocompatibilidade com configurações legadas
+    # Retrocompatibilidade com configurações legadas (Plumb-4B / Laya)
+    PLUMB_ENABLED: bool = True
+    PLUMB_MODEL_NAME: str = "alibiserikbay/JevK5-Lite"
+    PLUMB_DEVICE: str = "cpu"
     LAYA_ENABLED: bool = False
-    LAYA_MODEL_NAME: str = "crh225/plumb-4b"
+    LAYA_MODEL_NAME: str = "alibiserikbay/JevK5-Lite"
     # Configuração de Provedores de LLM (Ollama Local ou OpenAI)
     # Padrão: "ollama" com "qwen3.5:9b" para execução local gratuita
     LLM_PROVIDER: str = "ollama"  # "ollama" | "openai"

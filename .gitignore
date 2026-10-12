@@ -25,3 +25,4 @@ app/data/chroma_db/*
 *.ses
 models/*.onnx
 models/*.tar.gz
+models/jevk5_lite/

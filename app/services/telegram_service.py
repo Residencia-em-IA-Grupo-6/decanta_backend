@@ -55,10 +55,12 @@ def clean_text_for_public(text: str) -> str:
     t = text.strip()
 
     # 1. Remove menções a modelos e algoritmos internos
-    t = re.sub(r"Avaliação fundamentada pelo classificador de decisão Plumb-4B:?\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"Avaliação fundamentada pelo classificador de decisão (?:Plumb-4B|JevK5-Lite):?\s*", "", t, flags=re.IGNORECASE)
     t = re.sub(r"Resultado consolidado '?(?:FAKE|VERDADEIRO|SUSPEITO|INCONCLUSIVO)'? com base em \d+ alegação\(ões\).*?\.", "", t, flags=re.IGNORECASE)
-    t = re.sub(r"Classificador de Decisão Plumb-4B:?\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"Classificador de Decisão (?:Plumb-4B|JevK5-Lite):?\s*", "", t, flags=re.IGNORECASE)
     t = re.sub(r"Plumb-4B", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"JevK5-Lite", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bLaya\b", "", t, flags=re.IGNORECASE)
     t = re.sub(r"LLM Judge(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
     t = re.sub(r"Ollama local(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
     t = re.sub(r"spaCy Gatekeeper(?:\s*\+[^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
@@ -121,7 +123,7 @@ def build_accessible_sources(sources: list[str]) -> list[str]:
     for s in sources:
         # Descarta algoritmos e módulos técnicos internos
         if any(ign in s.lower() for ign in (
-            "plumb", "heurística", "extrator", "spacy", "llm judge", "ollama", "filtro de escopo"
+            "plumb", "jevk5", "laya", "heurística", "extrator", "spacy", "llm judge", "ollama", "filtro de escopo"
         )):
             continue
 

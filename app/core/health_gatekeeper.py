@@ -331,11 +331,11 @@ class HealthTopicGatekeeper:
         if biomedical_regex_matches:
             matched_biomedical.extend(biomedical_regex_matches)
 
-        # 1. Classificação Temática via ONNX INT8 / Plumb (se ativo)
+        # 1. Classificação Temática via ONNX INT8 / JevK5 (se ativo)
         classifier = getattr(self, "topic_classifier", None) or getattr(self, "plumb_classifier", None) or getattr(self, "laya_classifier", None)
         if classifier is not None:
-            plumb_result = await classifier.classify_async(text)
-            if plumb_result is not None:
+            topic_result = await classifier.classify_async(text)
+            if topic_result is not None:
                 # 1.1 Salvaguarda biomédica expressa:
                 # Se o texto contém termos biomédicos estritos (ex: vacina, dengue, câncer, remédio)
                 if matched_biomedical:
@@ -348,37 +348,37 @@ class HealthTopicGatekeeper:
                         reason=f"Texto contém alegação médica/sanitária substantiva passível de validação científica ({signals[0]}).",
                         matched_signals=signals,
                         detected_topic="Saúde",
-                        topic_confidence=round(max(plumb_result.health_probability, 0.85), 2),
+                        topic_confidence=round(max(topic_result.health_probability, 0.85), 2),
                     )
                     self._save_cache(cache_key, decision)
                     return decision
 
                 # 1.2 Se classificado como Política
-                if plumb_result.topic == "Política":
+                if topic_result.topic == "Política":
                     decision = HealthGatekeeperDecision(
                         is_health_topic=False,
                         is_political_polemic=True,
                         allows_verification=False,
                         category="POLITICAL_POLEMIC",
-                        reason=f"Texto classificado no tema de Política ({plumb_result.confidence * 100:.1f}% de certeza). O FactChkBR valida exclusivamente alegações factuais sobre saúde pública e biomedicina, excluindo debates político-partidários.",
+                        reason=f"Texto classificado no tema de Política ({topic_result.confidence * 100:.1f}% de certeza). O FactChkBR valida exclusivamente alegações factuais sobre saúde pública e biomedicina, excluindo debates político-partidários.",
                         matched_signals=matched_health[:4],
                         detected_topic="Política",
-                        topic_confidence=round(plumb_result.confidence, 2),
+                        topic_confidence=round(topic_result.confidence, 2),
                     )
                     self._save_cache(cache_key, decision)
                     return decision
 
                 # 1.3 Se classificado em outro tema fora de escopo (Entretenimento, Esportes, Economia, Outros)
-                if plumb_result.topic in ("Entretenimento", "Esportes", "Economia", "Outros"):
+                if topic_result.topic in ("Entretenimento", "Esportes", "Economia", "Outros"):
                     decision = HealthGatekeeperDecision(
                         is_health_topic=False,
                         is_political_polemic=False,
                         allows_verification=False,
                         category="OUT_OF_SCOPE",
-                        reason=f"O tema principal identificado foi '{plumb_result.topic}' ({plumb_result.confidence * 100:.1f}% de certeza). O FactChkBR realiza a validação de informações se e somente se o tema for estritamente relacionado à saúde pública ou biomedicina.",
+                        reason=f"O tema principal identificado foi '{topic_result.topic}' ({topic_result.confidence * 100:.1f}% de certeza). O FactChkBR realiza a validação de informações se e somente se o tema for estritamente relacionado à saúde pública ou biomedicina.",
                         matched_signals=matched_health[:4],
-                        detected_topic=plumb_result.topic,
-                        topic_confidence=round(plumb_result.confidence, 2),
+                        detected_topic=topic_result.topic,
+                        topic_confidence=round(topic_result.confidence, 2),
                     )
                     self._save_cache(cache_key, decision)
                     return decision
@@ -393,7 +393,7 @@ class HealthTopicGatekeeper:
                         reason="Declaração de cunho político/retórico atribuída a figura pública. O FactChkBR valida exclusivamente fatos biomédicos e sanitários, excluindo polêmicas político-partidárias.",
                         matched_signals=matched_health[:4],
                         detected_topic="Política",
-                        topic_confidence=round(plumb_result.probabilities.get("Política", plumb_result.confidence), 2),
+                        topic_confidence=round(topic_result.probabilities.get("Política", topic_result.confidence), 2),
                     )
                     self._save_cache(cache_key, decision)
                     return decision
@@ -407,10 +407,10 @@ class HealthTopicGatekeeper:
                     is_political_polemic=False,
                     allows_verification=True,
                     category="BIOMEDICAL_HEALTH" if is_biomed else "PUBLIC_HEALTH",
-                    reason=f"O texto foi classificado no tema de Saúde ({plumb_result.confidence * 100:.1f}% de certeza) com alegações médicas, terapêuticas ou sanitárias passíveis de validação.",
+                    reason=f"O texto foi classificado no tema de Saúde ({topic_result.confidence * 100:.1f}% de certeza) com alegações médicas, terapêuticas ou sanitárias passíveis de validação.",
                     matched_signals=signals,
                     detected_topic="Saúde",
-                    topic_confidence=round(plumb_result.confidence, 2),
+                    topic_confidence=round(topic_result.confidence, 2),
                 )
                 self._save_cache(cache_key, decision)
                 return decision

@@ -1128,24 +1128,24 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
 
         verdict, confidence, reasons = self.evaluate_verdict(all_evidences, claim=clean_text, original_text=original_text)
 
-        # Camada de Decisão Neural Plumb-4B (Cenário 2: verificação matemática por alegação)
-        plumb_used = False
-        plumb_probs: dict[str, float] = {}
+        # Camada de Decisão Neural JevK5-Lite (Cenário 2: verificação epistêmica por alegação)
+        decision_used = False
+        decision_probs: dict[str, float] = {}
         try:
-            from app.services.plumb_classifier import get_plumb_classifier
-            plumb = get_plumb_classifier()
-            plumb_res = await plumb.evaluate_claim_async(clean_text, evidences=all_evidences)
-            if plumb_res is not None:
-                verdict = plumb_res.verdict
-                confidence = plumb_res.confidence
-                plumb_probs = plumb_res.probabilities
-                plumb_used = True
+            from app.services.decision_classifier import get_decision_classifier
+            decision_clf = get_decision_classifier()
+            dec_res = await decision_clf.evaluate_claim_async(clean_text, evidences=all_evidences)
+            if dec_res is not None:
+                verdict = dec_res.verdict
+                confidence = dec_res.confidence
+                decision_probs = dec_res.probabilities
+                decision_used = True
                 logger.info(
-                    "Plumb-4B avaliou alegação '%s' -> %s (conf: %.3f)",
+                    "JevK5-Lite avaliou alegação '%s' -> %s (conf: %.3f)",
                     clean_text[:50], verdict, confidence
                 )
         except Exception as e:
-            logger.debug("Plumb-4B não disponível para alegação '%s': %s", clean_text[:50], e)
+            logger.debug("JevK5-Lite não disponível para alegação '%s': %s", clean_text[:50], e)
 
         sources = []
         for e in all_evidences[:4]:
@@ -1170,8 +1170,8 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             "justification": justification,
             "reasons": reasons,
             "sources": sources,
-            "decision_engine": "plumb-4b" if plumb_used else "rules",
-            "probabilities": plumb_probs,
+            "decision_engine": "jevk5_lite" if decision_used else "rules",
+            "probabilities": decision_probs,
             "evidences": [e.model_dump() for e in all_evidences[:6]],
             "vector_kb_count": len(vector_evidences),
             "anvisa_local_count": len(local_evidences),

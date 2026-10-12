@@ -48,7 +48,7 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
         system_prompt = (
             "/no_think\n"
             "Você é o redator sênior e analista editorial do FactChkBR, perito em verificação de fatos e desinformação no Brasil.\n"
-            "O motor neural de decisão epistêmica (Plumb-4B) é o responsável por determinar matematicamente a veracidade de cada alegação individual.\n"
+            "O motor neural de decisão epistêmica (JevK5-Lite) é o responsável por determinar a veracidade de cada alegação individual.\n"
             "SUA MISSÃO EXCLUSIVA É JORNALÍSTICA E EDITORIAL: Redigir uma síntese explicativa e pedagógica ('summary'), enumerar as razões fáticas ('reasons') e elaborar justificativas claras para cada alegação em 'claims_evaluation' com base nas evidências.\n\n"
             "DIRETRIZES FUNDAMENTAIS:\n"
             "1. FIDELIDADE AOS VEREDITOS:\n"
@@ -109,7 +109,7 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
             if is_vector_cached:
                 user_content += "Vereditos e fundamentações consolidadas recuperadas da Base Vetorial (ChromaDB):\n"
             else:
-                user_content += "Vereditos determinados pelo modelo de decisão matemática (Plumb-4B) para cada alegação:\n"
+                user_content += "Vereditos determinados pelo modelo de decisão epistêmica (JevK5-Lite) para cada alegação:\n"
             for i, sc in enumerate(sub_claims, 1):
                 s_stmt = sc.get("statement", "")
                 s_v = sc.get("verdict", "")
@@ -398,7 +398,7 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
                 j = sc.get("justification", "")
                 summary_parts.append(f"• \"{s}\": {v_str} ({j})")
             summary = (
-                f"Avaliação fundamentada pelo classificador de decisão Plumb-4B: "
+                f"Avaliação fundamentada pelo classificador de decisão JevK5-Lite: "
                 f"Resultado consolidado '{verdict.value}' com base em {len(sub_claims)} alegação(ões) checada(s)."
             )
             return AnalyzerResult(
@@ -408,11 +408,11 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
                 claim=text.strip(),
                 summary=summary,
                 reasons=agg_reasons,
-                sources=["Classificador de Decisão Plumb-4B", "Fontes e Checadores Oficiais"],
+                sources=["Classificador de Decisão JevK5-Lite", "Fontes e Checadores Oficiais"],
                 raw_details={
                     "model": self.settings.get_llm_model(),
                     "provider": self.settings.LLM_PROVIDER,
-                    "engine": "plumb_subclaims",
+                    "engine": "jevk5_subclaims",
                     "sub_claims": sub_claims,
                 },
             )

@@ -63,6 +63,8 @@ def test_telegram_format_analysis_html():
     # Não deve conter termos em inglês ou jargões
     assert "FAKE / BOATO" not in formatted
     assert "Plumb-4B" not in formatted
+    assert "JevK5-Lite" not in formatted
+    assert "Laya" not in formatted
     assert "LLM" not in formatted
     assert "ônus da prova" not in formatted
 

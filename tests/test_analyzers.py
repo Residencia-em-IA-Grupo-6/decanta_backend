@@ -800,14 +800,14 @@ def test_orchestrator_multi_claim_score_and_justification():
 
 
 @pytest.mark.asyncio
-async def test_plumb_claim_evaluator_direct():
-    """Valida a avaliação epistêmica direta do Plumb-4B para alegações atômicas."""
-    from app.services.plumb_classifier import get_plumb_classifier, PlumbClaimResult
+async def test_decision_claim_evaluator_direct():
+    """Valida a avaliação epistêmica direta do JevK5-Lite para alegações atômicas."""
+    from app.services.decision_classifier import get_decision_classifier, DecisionClaimResult
 
-    classifier = get_plumb_classifier()
+    classifier = get_decision_classifier()
     agent = classifier._ensure_loaded()
     if agent is None:
-        pytest.skip("Modelo Plumb-4B não disponível no ambiente de teste")
+        pytest.skip("Modelo JevK5-Lite não disponível no ambiente de teste")
 
     # Caso 1: Alegação falsa de golpe comercial
     fake_claim = "Adesivo de Mounjaro por 29 reais seca a barriga sem fazer academia"
@@ -819,7 +819,7 @@ async def test_plumb_claim_evaluator_direct():
         }
     ]
     res_fake = await classifier.evaluate_claim_async(fake_claim, evidences=fake_evidences)
-    assert isinstance(res_fake, PlumbClaimResult)
+    assert isinstance(res_fake, DecisionClaimResult)
     assert res_fake.verdict == Verdict.FAKE
     assert res_fake.confidence >= 0.70
     assert "fake" in res_fake.probabilities
@@ -834,7 +834,7 @@ async def test_plumb_claim_evaluator_direct():
         }
     ]
     res_true = await classifier.evaluate_claim_async(true_claim, evidences=true_evidences)
-    assert isinstance(res_true, PlumbClaimResult)
+    assert isinstance(res_true, DecisionClaimResult)
     assert res_true.verdict == Verdict.VERDADEIRO
     assert res_true.confidence >= 0.70
 
@@ -898,7 +898,7 @@ async def test_llm_judge_honors_plumb_verdicts_and_fallback():
     assert len(res.raw_details["sub_claims"]) == 2
     assert res.raw_details["sub_claims"][0]["verdict"] == Verdict.FAKE
     assert res.raw_details["sub_claims"][1]["verdict"] == Verdict.VERDADEIRO
-    assert "Plumb-4B" in res.summary or "modelo de decisão" in res.summary.lower()
+    assert "JevK5-Lite" in res.summary or "modelo de decisão" in res.summary.lower() or "classificador de decisão" in res.summary.lower()
 
 
 

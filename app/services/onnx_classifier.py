@@ -72,6 +72,9 @@ class TopicResult(BaseModel):
     latency_ms: float = Field(default=0.0, description="Tempo gasto para inferência em milissegundos")
 
 
+OnnxTopicResult = TopicResult
+
+
 def _softmax(x: np.ndarray) -> np.ndarray:
     e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
     return e_x / np.sum(e_x, axis=-1, keepdims=True)
@@ -195,24 +198,27 @@ class OnnxTopicClassifier:
         confidence = float(probs[best_id])
         norm = clean_text.lower()
 
-        # Calibração para casos de fronteira onde conversa_geral compete com tema institucional
-        if raw_best_topic == "conversa_geral":
-            pol_idx = [k for k, v in id2label.items() if v == "politica_governo"]
-            eco_idx = [k for k, v in id2label.items() if v == "economia_negocios"]
-            sau_idx = [k for k, v in id2label.items() if v == "saude"]
+        # Calibração para casos de fronteira onde conversa_geral ou falsos positivos competem com temas de domínio
+        pol_idx = [k for k, v in id2label.items() if v == "politica_governo"]
+        eco_idx = [k for k, v in id2label.items() if v == "economia_negocios"]
+        sau_idx = [k for k, v in id2label.items() if v == "saude"]
 
-            if pol_idx and any(w in norm for w in ("lula", "bolsonaro", "eleições", "eleição", "governo", "congresso", "stf", "senado", "deputado", "partido", "ministro", "medida provisória", "decreto", "voto")):
-                if float(probs[pol_idx[0]]) > 0.15:
-                    raw_best_topic = "politica_governo"
-                    confidence = float(probs[pol_idx[0]])
-            elif eco_idx and any(w in norm for w in ("banco central", "selic", "taxa de juros", "inflação", "dólar", "ibovespa", "copom", "bolsa de valores", "mercado financeiro", "poupança", "copom")):
-                if float(probs[eco_idx[0]]) > 0.08:
-                    raw_best_topic = "economia_negocios"
-                    confidence = float(probs[eco_idx[0]])
-            elif sau_idx and any(w in norm for w in ("emagrec", "vacina", "remédio", "medicamento", "câncer", "doença", "sintoma", "infarto", "cura", "limão")):
-                if float(probs[sau_idx[0]]) > 0.25:
-                    raw_best_topic = "saude"
-                    confidence = float(probs[sau_idx[0]])
+        has_health_words = any(w in norm for w in ("saúde", "saude", "médic", "medic", "hospital", "vacina", "remédio", "remedio", "doença", "doenca", "tratamento", "câncer", "cancer", "emagrec", "anvisa", "sus", "vírus", "virus", "sintoma", "dor", "infarto", "cura", "limão", "limao", "farmác", "farmac", "laboratóri", "laboratori"))
+        has_eco_words = any(w in norm for w in ("banco central", "selic", "taxa de juros", "inflação", "inflacao", "dólar", "dolar", "ibovespa", "copom", "bolsa de valores", "mercado financeiro", "poupança", "poupanca", "pib", "ibge"))
+        has_pol_words = any(w in norm for w in ("lula", "bolsonaro", "eleições", "eleição", "governo", "congresso", "stf", "senado", "deputado", "partido", "ministro", "medida provisória", "decreto", "voto"))
+
+        if has_health_words and not has_eco_words:
+            if sau_idx and float(probs[sau_idx[0]]) > 0.15:
+                raw_best_topic = "saude"
+                confidence = float(probs[sau_idx[0]])
+        elif has_eco_words and not has_health_words:
+            if eco_idx and float(probs[eco_idx[0]]) > 0.03:
+                raw_best_topic = "economia_negocios"
+                confidence = float(probs[eco_idx[0]])
+        elif raw_best_topic == "conversa_geral":
+            if pol_idx and has_pol_words and float(probs[pol_idx[0]]) > 0.15:
+                raw_best_topic = "politica_governo"
+                confidence = float(probs[pol_idx[0]])
 
         # Construir distribuição amigável em português
         portuguese_probs: dict[str, float] = {}
