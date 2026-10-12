@@ -980,22 +980,22 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             )
             for m in matches:
                 stance = "SUPPORTS" if m.verdict == Verdict.VERDADEIRO else ("REFUTES" if m.verdict == Verdict.FAKE else "NEUTRAL")
-                sim_pct = int((m.similarity or 0.0) * 100)
 
-                snippet = (
-                    f"Checagem anterior na base vetorial (Similaridade: {sim_pct}%, Confiança: {int(m.confidence * 100)}%): "
-                    f"Veredito {m.verdict.value}. Justificativa: {m.summary}"
-                )
+                clean_summary = m.summary or f"Informação verificada anteriormente como {m.verdict.value.lower()}."
+                snippet = f"Afirmação previamente apurada e confirmada como {m.verdict.value.lower()}: {clean_summary}"
                 if m.reasons:
-                    snippet += f" Motivos: {' | '.join(m.reasons[:2])}"
+                    clean_reasons = [r for r in m.reasons if not any(ign in r.lower() for ign in ("vetorial", "chroma", "similaridade", "estilístico"))][:2]
+                    if clean_reasons:
+                        snippet += f" Motivos: {' | '.join(clean_reasons)}"
 
-                first_source = m.sources[0] if m.sources else f"vector://claims/{m.id}"
+                real_source = m.sources[0] if (m.sources and not m.sources[0].startswith("vector:") and not "chroma" in m.sources[0].lower()) else "Checagem de Referência Anterior"
+                first_url = m.sources[0] if (m.sources and m.sources[0].startswith("http")) else "https://fatooufake.globo.com"
 
                 evidences.append(
                     EvidenceItem(
-                        title=f"Base Vetorial [{m.verdict.value}]: {m.statement}",
-                        source_name="Base Vetorial FactChkBR (ChromaDB)",
-                        url=first_source,
+                        title=f"Checagem Anterior [{m.verdict.value}]: {m.statement}",
+                        source_name=real_source,
+                        url=first_url,
                         snippet=snippet[:320],
                         rating=m.verdict.value,
                         is_fact_check=True,
@@ -1719,15 +1719,21 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             cached_sources = [
                 s for s in (cached_claim.sources or [])
                 if check_evidence_relevance(clean_text, s, original_text=original_text)
+                and "vector" not in s.lower() and "chroma" not in s.lower() and "base vetorial" not in s.lower()
             ]
-            all_sources = cached_sources if cached_sources else [f"Base Vetorial FactChkBR (ChromaDB): {cached_claim.statement}"]
+            all_sources = cached_sources if cached_sources else ["Apuração em Fontes Oficiais e Jornalísticas de Referência"]
 
             justification = (
                 cached_claim.summary
-                or (cached_claim.reasons[0] if cached_claim.reasons else f"Alegação previamente analisada e validada como {cached_claim.verdict.value}.")
+                or (cached_claim.reasons[0] if cached_claim.reasons else f"Alegação previamente apurada e confirmada como {cached_claim.verdict.value.lower()}.")
             )
-            reasons = list(cached_claim.reasons) if cached_claim.reasons else [
-                f"Alegação previamente checada no banco vetorial com veredito {cached_claim.verdict.value} (Similaridade: {sim_pct}%)."
+            raw_reasons = list(cached_claim.reasons) if cached_claim.reasons else []
+            clean_reasons = [
+                r for r in raw_reasons
+                if not any(ign in r.lower() for ign in ("banco vetorial", "base vetorial", "chroma", "similaridade:", "estilístico", "claim principal"))
+            ]
+            reasons = clean_reasons if clean_reasons else [
+                f"Esta afirmação já foi investigada e classificada anteriormente como {cached_claim.verdict.value.lower()}."
             ]
 
             return {

@@ -290,26 +290,39 @@ class FactCheckOrchestrator:
         all_sources: list[str] = []
         primary_claim: str | None = target_claim
 
-        INTERNAL_MODULE_NAMES = {
-            "heurística textual factchkbr (base: factckbr)",
-            "extrator factchkbr (spacy gatekeeper + llm structured outputs)",
-            "filtro de escopo temático factchkbr (saúde pública e biomedicina)",
-        }
+        INTERNAL_MODULE_KEYWORDS = (
+            "heurística", "extrator", "filtro de escopo", "base vetorial", "chromadb",
+            "vector", "vetorial", "spacy", "onnx", "jevk5", "plumb", "llm judge", "ollama",
+        )
 
         # Coleta todas as razões, fontes e alegação isolada
         for r in results:
             all_reasons.extend(r.reasons)
             for s in r.sources:
-                if s.lower().strip() not in INTERNAL_MODULE_NAMES:
+                s_lower = s.lower().strip()
+                if not any(kw in s_lower for kw in INTERNAL_MODULE_KEYWORDS):
                     all_sources.append(s)
             if not primary_claim and r.claim:
                 primary_claim = r.claim
 
-        # Filtra previamente itens repetidos de sub-alegações para reconstrução limpa e consolidada
-        filtered_reasons = [
-            r for r in all_reasons
-            if not re.match(r"^\[Alegação \d+ - [^\]]+\]", r, re.IGNORECASE)
-        ]
+        # Filtra previamente itens repetidos de sub-alegações e jargões puramente técnicos
+        TECHNICAL_REASON_KEYWORDS = (
+            "padrões estilísticos", "claim principal:", "banco vetorial", "base vetorial",
+            "chroma", "similaridade:", "spacy", "onnx", "jevk5", "estilometria",
+        )
+        filtered_reasons = []
+        for r in all_reasons:
+            if re.match(r"^\[Alegação \d+ - [^\]]+\]", r, re.IGNORECASE):
+                continue
+            r_lower = r.lower()
+            if any(kw in r_lower for kw in TECHNICAL_REASON_KEYWORDS):
+                continue
+            # Simplifica jargões acadêmicos
+            if "ônus da prova" in r_lower:
+                r = "Alegação não encontrada em fontes oficiais ou científicas de credibilidade (provavelmente falsa)."
+            elif "precedência probatória" in r_lower:
+                r = "Prevalência de checagem oficial: agências de checagem e autoridades regulatórias já desmentiram este fato."
+            filtered_reasons.append(r)
 
         # Filtra apenas os analisadores que emitem veredito
         verdict_bearing_results = [r for r in results if r.verdict is not None]
@@ -513,14 +526,14 @@ class FactCheckOrchestrator:
                     dominant_verdict = Verdict.FAKE
                     final_confidence = max(fc_res.confidence, 0.85)
                     filtered_reasons.append(
-                        "Prevalência de checagem oficial: fontes jornalísticas/IFCN de desmentido têm precedência probatória sobre confirmação divergente."
+                        "Prevalência de checagem oficial: agências profissionais de checagem já desmentiram esta afirmação."
                     )
                 # Prevalência de comprovação oficial/jornalística: se há confirmação documental e sem desmentido
                 elif has_confirm and not has_debunk and any(r.verdict == Verdict.VERDADEIRO for r in valid_conclusive):
                     dominant_verdict = Verdict.VERDADEIRO
                     final_confidence = max(r.confidence for r in valid_conclusive if r.verdict == Verdict.VERDADEIRO)
                     filtered_reasons.append(
-                        "Confirmação por fontes oficiais e órgãos de referência com base documental comprovada."
+                        "Informação conferida e confirmada com base em documentos e registros oficiais."
                     )
                 else:
                     best_result = max(valid_conclusive, key=lambda r: r.confidence)
@@ -528,15 +541,14 @@ class FactCheckOrchestrator:
                     final_confidence = best_result.confidence
                     if dominant_verdict == Verdict.FAKE and not has_debunk:
                         filtered_reasons.append(
-                            "Alegação não encontrada em fontes oficiais ou jornalísticas: sob o princípio de ônus da prova, afirmações sem respaldo factual são classificadas como provavelmente falsas."
+                            "Alegação não encontrada em fontes oficiais ou veículos jornalísticos de referência (provavelmente falsa)."
                         )
             else:
                 # Quando nenhum modelo gerou veredito conclusivo válido com confirmação:
-                # Diretriz epistemológica: Não encontrado -> Provavelmente falso
                 dominant_verdict = Verdict.FAKE
                 final_confidence = 0.75
                 filtered_reasons.append(
-                    "Alegação não encontrada em fontes de referência: ausência de registros oficiais ou cobertura jornalística de credibilidade. Sob o princípio de ônus da prova, afirmações sem respaldo factual são tratadas como provavelmente falsas."
+                    "Alegação não encontrada em registros oficiais nem cobertura jornalística confiável (provavelmente falsa)."
                 )
 
             # Impacto composto no veredito se houver múltiplas sub-alegações consolidadas

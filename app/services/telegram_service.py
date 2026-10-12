@@ -54,7 +54,12 @@ def clean_text_for_public(text: str) -> str:
         return ""
     t = text.strip()
 
-    # 1. Remove menções a modelos e algoritmos internos
+    # 1. Remove menções a modelos, algoritmos internos e bases de dados técnicas
+    t = re.sub(r"Base Vetorial FactChkBR(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"ChromaDB(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"banco vetorial(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\(Similaridade:\s*\d+%\)", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"Similaridade:\s*\d+%", "", t, flags=re.IGNORECASE)
     t = re.sub(r"Avaliação fundamentada pelo classificador de decisão (?:Plumb-4B|JevK5-Lite):?\s*", "", t, flags=re.IGNORECASE)
     t = re.sub(r"Resultado consolidado '?(?:FAKE|VERDADEIRO|SUSPEITO|INCONCLUSIVO)'? com base em \d+ alegação\(ões\).*?\.", "", t, flags=re.IGNORECASE)
     t = re.sub(r"Classificador de Decisão (?:Plumb-4B|JevK5-Lite):?\s*", "", t, flags=re.IGNORECASE)
@@ -119,11 +124,11 @@ def build_accessible_sources(sources: list[str]) -> list[str]:
     """
     results: list[str] = []
     seen_urls: set[str] = set()
-
     for s in sources:
-        # Descarta algoritmos e módulos técnicos internos
+        # Descarta algoritmos, módulos técnicos internos e bases de dados vetoriais
         if any(ign in s.lower() for ign in (
-            "plumb", "jevk5", "laya", "heurística", "extrator", "spacy", "llm judge", "ollama", "filtro de escopo"
+            "plumb", "jevk5", "laya", "heurística", "extrator", "spacy", "llm judge", "ollama",
+            "filtro de escopo", "base vetorial", "chromadb", "vector", "vetorial",
         )):
             continue
 
