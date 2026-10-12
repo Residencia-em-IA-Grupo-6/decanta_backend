@@ -10,8 +10,6 @@ from pydantic import BaseModel, Field
 
 from app.config import Settings, get_settings
 from app.services.onnx_classifier import OnnxTopicClassifier, get_onnx_classifier
-from app.services.plumb_classifier import PlumbTopicClassifier, get_plumb_classifier
-from app.services.laya_classifier import LayaTopicClassifier, get_laya_classifier
 
 logger = logging.getLogger("factchkbr.core.health_gatekeeper")
 
@@ -230,14 +228,10 @@ class HealthTopicGatekeeper:
             self.topic_classifier = get_onnx_classifier(
                 model_dir=getattr(self.settings, "ONNX_MODEL_DIR", "models")
             )
-        elif getattr(self.settings, "PLUMB_ENABLED", False) or getattr(self.settings, "LAYA_ENABLED", False):
-            self.topic_classifier = PlumbTopicClassifier(
-                model_name=getattr(self.settings, "PLUMB_MODEL_NAME", "crh225/plumb-4b"),
-                device=getattr(self.settings, "PLUMB_DEVICE", "mps"),
-            )
         else:
             self.topic_classifier = None
 
+        # Aliases legados mantidos apenas para compatibilidade de API
         self.plumb_classifier = self.topic_classifier
         self.laya_classifier = self.topic_classifier
 

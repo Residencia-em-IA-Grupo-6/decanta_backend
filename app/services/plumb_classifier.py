@@ -103,8 +103,10 @@ class PlumbFusedResult(BaseModel):
 
 class PlumbTopicClassifier:
     """
-    Classificador temático baseado no Plumb-4B (singleton lazy-loaded via JevK5).
-    Utiliza o checkpoint crh225/plumb-4b com cabeça de decisão rápida em MPS/CPU.
+    [LEGADO / DEPRECATED para triagem temática]
+    Classificador temático mantido para retrocompatibilidade.
+    O Gatekeeper de Saúde foi migrado oficialmente para o OnnxTopicClassifier (~19ms).
+    Esta classe agora atua prioritariamente como fachada com fallback para o motor ONNX.
     """
     _agent: Any = None
     _load_attempted: bool = False

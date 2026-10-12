@@ -249,3 +249,37 @@ async def test_gatekeeper_plumb_blocks_sports_and_entertainment(gatekeeper: Heal
     assert decision_cin.category == "OUT_OF_SCOPE"
     assert decision_cin.detected_topic == "Entretenimento"
 
+
+def test_onnx_topic_classifier_direct():
+    """Valida a inferência direta de alta performance do OnnxTopicClassifier."""
+    from app.services.onnx_classifier import get_onnx_classifier
+
+    clf = get_onnx_classifier()
+
+    # 1. Saúde e Emagrecimento
+    res_mounjaro = clf.classify("Adesivo Mounjaro - emagrecimento rápido sem passar fome")
+    assert res_mounjaro is not None
+    assert res_mounjaro.topic == "Saúde"
+    assert res_mounjaro.is_health is True
+
+    # 2. Mito de Saúde Popular (Água com Limão)
+    res_limao = clf.classify("Água com limão em jejum emagrece e queima toda a gordura do abdômen")
+    assert res_limao is not None
+    assert res_limao.topic == "Saúde"
+    assert res_limao.is_health is True
+
+    # 3. Política
+    res_pol = clf.classify("Lula assina medida provisória que altera regras para as eleições de 2026")
+    assert res_pol is not None
+    assert res_pol.topic in ("Política", "Economia")
+    assert res_pol.is_health is False
+
+    # 4. Esportes
+    res_esp = clf.classify("Flamengo vence por 3 a 0 no Maracanã e assume a liderança do Brasileirão")
+    assert res_esp is not None
+    assert res_esp.topic == "Esportes"
+    assert res_esp.is_health is False
+
+    # 5. Latência de inferência em CPU (< 50ms)
+    assert res_mounjaro.latency_ms < 50.0
+
