@@ -156,6 +156,49 @@ STOP_WORDS_PT = {
     "foram", "tudo", "todo", "toda", "todos", "todas", "outro", "outra", "outros",
 }
 
+COMMON_VERBS_AND_FILLER = {
+    # Verbos comuns de existência, fala, ação e promessa
+    "existe", "existem", "existir", "existia", "existiam", "haver", "havia", "houve", "tem", "têm", "ter",
+    "diz", "dizem", "dizer", "disse", "disseram", "afirma", "afirmam", "afirmou", "afirmaram",
+    "fala", "falam", "falou", "falavam", "conta", "contam", "contou",
+    "veja", "ver", "vê", "viram", "olhe", "olhar",
+    "mostra", "mostram", "mostrou", "revela", "revelam", "revelou",
+    "garante", "garantem", "garantiu", "assegura", "asseguram",
+    "promete", "prometem", "prometendo", "prometeu",
+    "descubra", "saiba", "entenda", "confira", "conheça",
+    "ajuda", "ajudam", "serve", "servem", "funciona", "funcionam",
+    "cura", "curar", "curam", "curou", "trata", "tratam", "tratar",
+    "seca", "secar", "secam", "secou", "elimina", "eliminam", "eliminar",
+    "perde", "perdem", "perder", "emagrece", "emagrecem", "emagrecer",
+    "vende", "vender", "vendem", "vendeu", "compra", "comprar", "compram",
+    # Mídia, redes sociais e formatos
+    "foto", "fotos", "video", "vídeo", "videos", "vídeos", "imagem", "imagens",
+    "link", "links", "post", "posts", "audio", "áudio", "print", "prints",
+    "publicacao", "publicação", "publicações", "compartilhe", "compartilhar",
+    # Termos comerciais genéricos
+    "venda", "vendas", "preco", "preço", "precos", "preços", "valor", "valores",
+    "reais", "real", "dolar", "dólar", "dolares", "dólares",
+    "gratis", "grátis", "barato", "barata", "caro", "cara", "promocao", "promoção",
+    "oferta", "ofertas", "desconto", "descontos", "kit", "frasco", "frascos",
+    # Termos epistêmicos/jornalísticos genéricos
+    "verdade", "fato", "boato", "fake", "noticia", "notícia", "noticias", "notícias",
+    "alerta", "urgente", "milagre", "milagroso", "milagrosa",
+    # Temporal e quantificadores
+    "hoje", "ontem", "amanha", "amanhã", "agora", "nunca", "sempre",
+    "dia", "dias", "mes", "meses", "ano", "anos", "vez", "vezes",
+    "segundo", "minuto", "minutos", "hora", "horas",
+    "forma", "formas", "modo", "modos", "jeito", "coisa", "coisas",
+}
+
+GENERIC_HEALTH_EFFECTS = {
+    "emagrecer", "emagrece", "emagrecimento", "emagrecedor", "emagrecedora",
+    "secar", "seca", "gordura", "peso", "perda", "barriga",
+    "diabetes", "diabete", "diabético", "diabética", "glicose", "glicemia", "açúcar",
+    "colesterol", "triglicerídeos", "triglicérides", "pressão", "hipertensão", "coração",
+    "câncer", "tumor", "doença", "doenças", "dor", "dores", "inflamação", "imunidade",
+    "cura", "curar", "curas", "tratamento", "tratar", "prevenção", "prevenir",
+}
+
 NEGATION_PATTERNS = re.compile(
     r"\b(?:não|nunca|jamais|tampouco|nenhum|nenhuma|sem|falso que|inverídico|impossível)\b",
     re.IGNORECASE,
@@ -284,20 +327,16 @@ def extract_substantive_tokens(text: str) -> list[str]:
 def extract_salient_entities(text: str) -> list[str]:
     """Identifica dinamicamente entidades e termos substantivos proeminentes sem listas estáticas/hardcoded."""
     # 1. Identifica nomes próprios ou termos com inicial maiúscula (ex: 'Mounjaro', 'Anvisa', 'Ozempic')
+    # Ignora palavras iniciais se forem verbos ou termos genéricos de preenchimento
     proper_nouns = [
         w.lower() for w in re.findall(r"\b[A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ0-9\-]{2,}\b", text)
-        if w.lower() not in STOP_WORDS_PT
+        if w.lower() not in STOP_WORDS_PT and w.lower() not in COMMON_VERBS_AND_FILLER
     ]
     # 2. Extrai tokens substantivos filtrados de ruído genérico
     substantive = extract_substantive_tokens(text)
-    noise_words = {
-        "venda", "vendas", "vender", "reais", "preco", "preço", "precos", "preços",
-        "comprar", "compra", "barato", "caro", "gratis", "grátis", "dia", "dias",
-        "mes", "meses", "ano", "anos", "vez", "vezes", "coisa", "coisas", "forma",
-    }
-    salient = [t for t in substantive if t not in noise_words and len(t) >= 4]
+    salient = [t for t in substantive if t not in COMMON_VERBS_AND_FILLER and len(t) >= 4]
 
-    # Combina mantendo ordem de relevância
+    # Combina mantendo ordem de relevância (nomes próprios primeiro, depois substantivos)
     ordered = list(dict.fromkeys(proper_nouns + salient))
     return ordered
 
@@ -305,28 +344,23 @@ def extract_salient_entities(text: str) -> list[str]:
 def build_search_queries(claim: str, original_text: str | None = None) -> list[str]:
     """
     Gera consultas multi-termo inteligentes para maximizar a revocação nas APIs de checagem:
-    1. Entidades salientes prioritárias (ex: 'mounjaro', 'tirzepatida', 'adesivo emagrecedor')
-    2. Pares semânticos entidade + tópico (ex: 'mounjaro diabetes', 'mounjaro adesivo')
-    3. Bigramas substantivos essenciais
+    1. Pares semânticos entidade + tópico (ex: 'mounjaro adesivo', 'mounjaro diabetes')
+    2. Bigramas substantivos essenciais
+    3. Entidades salientes substantivas (com comprimento mínimo para evitar ruído)
     4. Frase concisa limpa
     """
     queries: list[str] = []
     clean_c = clean_reviewed_claim(claim)
     base_q = clean_c if clean_c else claim.strip()
 
-    # 1. Entidades salientes prioritárias
     entities = extract_salient_entities(base_q)
     if original_text:
         entities = list(dict.fromkeys(entities + extract_salient_entities(original_text)))
-    for ent in entities:
-        if ent not in queries:
-            queries.append(ent)
 
-    # 2. Combinações de entidade + tokens substantivos
     tokens = extract_substantive_tokens(base_q)
-    noise_words = {"venda", "vendas", "vender", "reais", "preco", "preço", "comprar", "dia", "anos", "teste", "valor"}
-    salient_tokens = [t for t in tokens if t not in noise_words and len(t) >= 4]
+    salient_tokens = [t for t in tokens if t not in COMMON_VERBS_AND_FILLER and len(t) >= 4]
 
+    # 1. Pares semânticos entidade + tokens substantivos (mais específicos e precisos)
     for ent in entities:
         for t in salient_tokens:
             if t not in ent and len(t) >= 4:
@@ -334,7 +368,7 @@ def build_search_queries(claim: str, original_text: str | None = None) -> list[s
                 if comb not in queries:
                     queries.append(comb)
 
-    # 3. Bigramas substantivos
+    # 2. Bigramas substantivos essenciais
     if len(salient_tokens) >= 2:
         pair1 = f"{salient_tokens[0]} {salient_tokens[1]}"
         if pair1 not in queries:
@@ -344,14 +378,19 @@ def build_search_queries(claim: str, original_text: str | None = None) -> list[s
         if pair2 not in queries:
             queries.append(pair2)
 
-    # 4. Frase concisa limpa (se curta)
-    if base_q and len(base_q.split()) <= 7 and base_q not in queries:
+    # 3. Entidade saliente isolada (apenas se for termo substantivo com len >= 5 e não for preenchimento)
+    for ent in entities:
+        if len(ent) >= 5 and ent not in COMMON_VERBS_AND_FILLER and ent not in queries:
+            queries.append(ent)
+
+    # 4. Frase concisa limpa (se curta e substantiva)
+    if base_q and len(base_q.split()) <= 6 and base_q not in queries:
         queries.append(base_q)
 
     # 5. Frase original se fornecida e concisa
     if original_text and original_text.strip():
         clean_orig = clean_reviewed_claim(original_text).strip()
-        if clean_orig and len(clean_orig.split()) <= 7 and clean_orig not in queries:
+        if clean_orig and len(clean_orig.split()) <= 6 and clean_orig not in queries:
             queries.append(clean_orig)
 
     if not queries and base_q:
@@ -364,42 +403,70 @@ def check_evidence_relevance(claim: str, evidence_text: str, original_text: str 
     """
     Verifica se a evidência trata especificamente do mesmo assunto da alegação,
     evitando falsos positivos gerados por notícias tangenciais ou coincidentes.
-    Permite validar tanto pelos tokens da claim quanto pelo original_text do usuário.
+    Regra central:
+    - Para qualquer alegação com 2 ou mais termos substantivos, a evidência DEVE
+      conter no mínimo 2 termos substantivos coincidentes (evitando que uma menção
+      isolada a 'adesivo' ou isolada a 'mounjaro' puxe notícias não relacionadas).
+    - Para alegações curtas com apenas 1 termo substantivo, exige coincidência desse termo.
     """
     clean_c = clean_reviewed_claim(claim)
-    claim_tokens = extract_substantive_tokens(clean_c if clean_c else claim)
-    
-    orig_tokens: list[str] = []
-    if original_text:
-        clean_o = clean_reviewed_claim(original_text)
-        orig_tokens = extract_substantive_tokens(clean_o if clean_o else original_text)
+    target_text = clean_c if clean_c else (clean_reviewed_claim(original_text) if original_text else "")
+    if not target_text and not claim:
+        return True
 
-    all_target_tokens = list(dict.fromkeys(claim_tokens + orig_tokens))
-    if not all_target_tokens:
+    claim_tokens = [
+        t for t in extract_substantive_tokens(target_text)
+        if t not in COMMON_VERBS_AND_FILLER and len(t) >= 4
+    ]
+
+    # Se a sub-claim for muito curta (< 2 tokens) e houver original_text, enriquece com tokens do original
+    if len(claim_tokens) < 2 and original_text:
+        clean_o = clean_reviewed_claim(original_text)
+        orig_tokens = [
+            t for t in extract_substantive_tokens(clean_o)
+            if t not in COMMON_VERBS_AND_FILLER and len(t) >= 4
+        ]
+        claim_tokens = list(dict.fromkeys(claim_tokens + orig_tokens))
+
+    if not claim_tokens:
         return True
 
     ev_tokens = set(extract_substantive_tokens(evidence_text))
+    ev_text_lower = evidence_text.lower()
 
-    def _token_match(ct: str, et: str) -> bool:
-        if ct == et:
+    def _token_match(ct: str) -> bool:
+        if ct in ev_tokens:
             return True
-        # Variações flexionais comuns (plural / singular / gênero) com raiz idêntica
-        if len(ct) >= 4 and len(et) >= 4:
-            if ct.startswith(et) or et.startswith(ct):
-                return abs(len(ct) - len(et)) <= 2
-            if len(ct) >= 5 and len(et) >= 5 and ct[:5] == et[:5]:
-                return abs(len(ct) - len(et)) <= 2
+        if len(ct) >= 5 and ct in ev_text_lower:
+            return True
+        for et in ev_tokens:
+            if len(ct) >= 4 and len(et) >= 4:
+                if ct.startswith(et) or et.startswith(ct):
+                    if abs(len(ct) - len(et)) <= 2:
+                        return True
+                if len(ct) >= 5 and len(et) >= 5 and ct[:5] == et[:5]:
+                    if abs(len(ct) - len(et)) <= 2:
+                        return True
         return False
 
-    matches = 0
-    for ct in all_target_tokens:
-        if any(_token_match(ct, et) for et in ev_tokens):
-            matches += 1
+    matched_tokens = [ct for ct in claim_tokens if _token_match(ct)]
+    distinctive_claim_tokens = [t for t in claim_tokens if t not in GENERIC_HEALTH_EFFECTS]
+    matched_distinctive = [dt for dt in distinctive_claim_tokens if _token_match(dt)]
+    n_tokens = len(claim_tokens)
 
-    n_tokens = len(all_target_tokens)
-    if n_tokens <= 2:
-        return matches >= 1
-    return (matches / n_tokens) >= 0.40
+    if n_tokens <= 1:
+        return len(matched_tokens) >= 1
+
+    # Se a alegação possui tokens distintivos do objeto/veículo/substância (ex: 'adesivo', 'mounjaro'):
+    # a evidência DEVE coincidir com pelo menos 1 token distintivo (evitando que coincidências puramente
+    # em efeitos genéricos como 'emagrecer' e 'diabetes' aceitem falsos positivos como vinagre de maçã).
+    if distinctive_claim_tokens:
+        if len(matched_distinctive) < 1:
+            return False
+
+    # Para alegações com 2 ou mais termos, exige no mínimo 2 termos coincidentes
+    return len(matched_tokens) >= 2 and (len(matched_tokens) / n_tokens) >= 0.30
+
 
 
 @register_analyzer("fact_check_api", weight=1.5)
@@ -491,8 +558,16 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                 logger.debug("Erro na chamada à Google Fact Check API (%s): %s", q, e)
             return []
 
-        # Prioriza queries concisas de entidades e termos salientes para máxima revocação na API do Google
-        candidate_terms = sorted(search_terms, key=lambda t: len(t.split()))
+        # Prioriza queries multi-termo específicas e filtra termos genéricos de preenchimento
+        valid_terms = []
+        for t in search_terms:
+            parts = t.split()
+            if len(parts) >= 2:
+                valid_terms.append(t)
+            elif len(parts) == 1 and len(t) >= 5 and t.lower() not in COMMON_VERBS_AND_FILLER and t.lower() not in STOP_WORDS_PT:
+                valid_terms.append(t)
+
+        candidate_terms = sorted(valid_terms, key=lambda t: len(t.split()))
         tasks = [_query_api(term, lang="pt-BR") for term in candidate_terms[:4]]
         if candidate_terms:
             tasks.append(_query_api(candidate_terms[0], lang=None))
@@ -544,10 +619,11 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             entities = list(dict.fromkeys(entities + extract_salient_entities(original_text)))
 
         # Define o núcleo temático para a busca lateral
-        primary_entity = entities[0] if entities else ""
         candidate_terms = [t for t in search_terms if len(t.split()) <= 4]
-        primary_term = candidate_terms[0] if candidate_terms else (search_terms[0] if search_terms else query)
-        core_query = primary_entity or primary_term
+        # Prioriza termo composto substantivo para garantir precisão temática
+        compound_candidate = next((t for t in candidate_terms if len(t.split()) >= 2), None)
+        primary_entity = entities[0] if entities else ""
+        core_query = compound_candidate or primary_entity or (candidate_terms[0] if candidate_terms else query)
 
         tasks = []
         # 1. Consulta geral concisa com os principais termos-chave
@@ -574,12 +650,12 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
         is_stat = bool(
             re.search(
                 r"\b(?:pib|inflação|ipca|desemprego|educação|gastos?|orçamento|taxa|censo|população|salário)\b",
-                primary_term,
+                core_query,
                 re.IGNORECASE,
             )
         )
         if is_stat:
-            stat_query = f"(site:ibge.gov.br OR site:ipea.gov.br) {primary_term[:80]}"
+            stat_query = f"(site:ibge.gov.br OR site:ipea.gov.br) {core_query[:80]}"
             stat_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(stat_query)}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
             tasks.append(self._fetch_rss(stat_url, max_items=4, force_official=True))
 
@@ -963,10 +1039,7 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
 
         for ev in evidences:
             ev_text = f"{ev.title} {ev.snippet} {ev.claim_reviewed or ''}"
-            if ev.source_name.startswith("ClinicalTrials") or "PubMed" in ev.source_name or "Europe PMC" in ev.source_name:
-                is_relevant = True
-            else:
-                is_relevant = check_evidence_relevance(claim, ev_text, original_text=original_text)
+            is_relevant = check_evidence_relevance(claim, ev_text, original_text=original_text)
             ev.is_relevant = is_relevant
             if not is_relevant:
                 ev.stance = "NEUTRAL"
@@ -1182,8 +1255,17 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                 is_relevant=True,
             )
 
-            all_evidences = [cached_ev] + (extra_evidences or [])
-            all_sources = cached_claim.sources if cached_claim.sources else [f"Base Vetorial FactChkBR (ChromaDB): {cached_claim.statement}"]
+            relevant_extra = [
+                e for e in (extra_evidences or [])
+                if check_evidence_relevance(clean_text, f"{e.title} {e.snippet} {e.claim_reviewed or ''}", original_text=original_text)
+            ]
+            all_evidences = [cached_ev] + relevant_extra
+
+            cached_sources = [
+                s for s in (cached_claim.sources or [])
+                if check_evidence_relevance(clean_text, s, original_text=original_text)
+            ]
+            all_sources = cached_sources if cached_sources else [f"Base Vetorial FactChkBR (ChromaDB): {cached_claim.statement}"]
 
             justification = (
                 cached_claim.summary
@@ -1232,7 +1314,7 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
         ct_evidences = results[2] if isinstance(results[2], list) else []
         bio_evidences = results[3] if isinstance(results[3], list) else []
 
-        all_evidences = (
+        raw_candidates = (
             (extra_evidences or [])
             + vector_evidences
             + local_evidences
@@ -1241,6 +1323,16 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             + ct_evidences
             + bio_evidences
         )
+
+        # Filtro estrito de pertinência temática: descarta sumariamente evidências sem correlação direta com a alegação
+        all_evidences: list[EvidenceItem] = []
+        for ev in raw_candidates:
+            ev_text = f"{ev.title} {ev.snippet} {ev.claim_reviewed or ''}"
+            if check_evidence_relevance(clean_text, ev_text, original_text=original_text):
+                ev.is_relevant = True
+                all_evidences.append(ev)
+            else:
+                ev.is_relevant = False
 
         verdict, confidence, reasons = self.evaluate_verdict(all_evidences, claim=clean_text, original_text=original_text)
 
@@ -1264,8 +1356,11 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             logger.debug("JevK5-Lite não disponível para alegação '%s': %s", clean_text[:50], e)
 
         sources = []
-        for e in all_evidences[:4]:
-            sources.append(f"{e.source_name}: {e.title}")
+        if all_evidences:
+            for e in all_evidences[:4]:
+                sources.append(f"{e.source_name}: {e.title}")
+        else:
+            sources.append("Nenhuma checagem prévia ou fonte oficial encontrada para esta alegação específica (ausência de respaldo fático)")
 
         if verdict == Verdict.FAKE:
             if reasons and any("não encontrada" in r.lower() for r in reasons):
@@ -1447,6 +1542,10 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                 else "Nenhuma evidência externa direta localizada nas fontes consultadas."
             )
 
+        dedup_sources = list(dict.fromkeys(all_sources))
+        real_sources = [s for s in dedup_sources if not s.startswith("Nenhuma ") and not s.startswith("Ausência ")]
+        fc_sources = real_sources[:6] if real_sources else (dedup_sources[:2] or ["Mídia de Referência e Órgãos Oficiais (nenhum registro localizado)"])
+
         return AnalyzerResult(
             analyzer_name="fact_check_api",
             verdict=verdict,
@@ -1454,7 +1553,7 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             claim=text,
             summary=summary,
             reasons=reasons,
-            sources=list(dict.fromkeys(all_sources))[:6] or ["Mídia de Referência e Órgãos Oficiais"],
+            sources=fc_sources,
             raw_details={
                 "total_evidences": len(all_evidences),
                 "vector_cache_hit": any_cache_hit,

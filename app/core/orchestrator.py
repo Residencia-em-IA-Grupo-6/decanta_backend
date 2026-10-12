@@ -290,10 +290,18 @@ class FactCheckOrchestrator:
         all_sources: list[str] = []
         primary_claim: str | None = target_claim
 
+        INTERNAL_MODULE_NAMES = {
+            "heurística textual factchkbr (base: factckbr)",
+            "extrator factchkbr (spacy gatekeeper + llm structured outputs)",
+            "filtro de escopo temático factchkbr (saúde pública e biomedicina)",
+        }
+
         # Coleta todas as razões, fontes e alegação isolada
         for r in results:
             all_reasons.extend(r.reasons)
-            all_sources.extend(r.sources)
+            for s in r.sources:
+                if s.lower().strip() not in INTERNAL_MODULE_NAMES:
+                    all_sources.append(s)
             if not primary_claim and r.claim:
                 primary_claim = r.claim
 
@@ -595,13 +603,17 @@ class FactCheckOrchestrator:
             from app.analyzers.llm_judge import synthesize_health_risks
             risks_assessment = synthesize_health_risks(text, dominant_verdict, consolidated_sub_claims)
 
+        dedup_sources = list(dict.fromkeys(all_sources))
+        real_sources = [s for s in dedup_sources if not s.startswith("Nenhuma ") and not s.startswith("Ausência ")]
+        final_sources = real_sources if real_sources else dedup_sources
+
         return AnalyzeResponse(
             claim=primary_claim or text.strip(),
             verdict=dominant_verdict,
             confidence=round(final_confidence, 2),
             summary=summary,
             reasons=list(dict.fromkeys(filtered_reasons)),
-            sources=list(dict.fromkeys(all_sources)),
+            sources=final_sources,
             sub_claims=consolidated_sub_claims,
             risks_assessment=risks_assessment,
         )

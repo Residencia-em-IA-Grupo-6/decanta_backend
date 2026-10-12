@@ -3,6 +3,8 @@ from app.analyzers.fact_check_api import (
     SourceTier,
     get_source_tier,
     check_evidence_relevance,
+    extract_salient_entities,
+    build_search_queries,
     EvidenceItem,
     FactCheckApiAnalyzer,
     is_meta_debunk_claim,
@@ -669,6 +671,85 @@ def test_orchestrator_multi_subclaims_unverified_all_fake():
     assert len(response.sub_claims) == 2
     for sc in response.sub_claims:
         assert sc.verdict == Verdict.FAKE
+
+
+def test_extract_salient_entities_filters_sentence_initial_verbs():
+    """Valida que verbos e preenchimentos no início de frase não são tratados como entidades salientes."""
+    entities = extract_salient_entities("Existe adesivo emagrecedor com Mounjaro à venda por 39 reais")
+    assert "existe" not in entities
+    assert "venda" not in entities
+    assert "reais" not in entities
+    assert "mounjaro" in entities
+    assert "adesivo" in entities
+    assert "emagrecedor" in entities
+
+
+def test_strict_topical_relevance_filtering_unrelated_debunks():
+    """Valida o descarte absoluto de checagens não relacionadas (urna, câncer, carro na enchente)."""
+    claim = "Existe adesivo emagrecedor com Mounjaro à venda por 39 reais"
+
+    # Falsos positivos que apareciam antes do filtro rigoroso
+    urna = "Fato ou Fake: Não existe voto parcial na urna eletrônica"
+    cancer = "Agência Lupa: É falso que câncer de mama não existe e foi inventado"
+    carro = "Boatos.org: Carro submerso na enchente na Alemanha tinha adesivo da Greta"
+    enzima = "G1: Não existe enzima comedora de gordura milagrosa"
+
+    assert check_evidence_relevance(claim, urna) is False
+    assert check_evidence_relevance(claim, cancer) is False
+    assert check_evidence_relevance(claim, carro) is False
+    assert check_evidence_relevance(claim, enzima) is False
+
+    # Evidências verdadeiramente relevantes para o tema
+    mounjaro_golpe = "G1: Golpe do adesivo emagrecedor com Mounjaro falso usa imagem de médicos"
+    anvisa_alerta = "Anvisa alerta sobre falsificação de adesivo com Mounjaro vendido na internet"
+    adesivo_fraude = "Boatos.org: Adesivo emagrecedor que promete queimar gordura é fraude"
+
+    assert check_evidence_relevance(claim, mounjaro_golpe) is True
+    assert check_evidence_relevance(claim, anvisa_alerta) is True
+    assert check_evidence_relevance(claim, adesivo_fraude) is True
+
+
+@pytest.mark.asyncio
+async def test_check_single_claim_sources_excludes_irrelevant_evidences():
+    """Valida que check_single_claim não inclui notícias irrelevantes nas fontes nem no veredito."""
+    analyzer = FactCheckApiAnalyzer()
+
+    # Injeta evidências irrelevantes simulando retorno de API externa
+    irrelevant_ev = [
+        EvidenceItem(
+            title="Não existe voto parcial na urna eletrônica",
+            source_name="Fato ou Fake",
+            url="https://g1.globo.com/urna",
+            rating="Falso",
+            is_fact_check=True,
+        ),
+        EvidenceItem(
+            title="Carro submerso na Alemanha tinha adesivo",
+            source_name="Boatos.org",
+            url="https://boatos.org/carro",
+            rating="Falso",
+            is_fact_check=True,
+        ),
+    ]
+
+    result = await analyzer.check_single_claim(
+        "Existe adesivo emagrecedor com Mounjaro à venda por 39 reais",
+        extra_evidences=irrelevant_ev,
+    )
+
+    # As evidências injetadas irrelevantes não devem estar presentes
+    assert not any("urna" in e.get("title", "").lower() for e in result["evidences"])
+    assert not any("carro" in e.get("title", "").lower() for e in result["evidences"])
+    # Todas as evidências presentes (se houver de buscas reais) DEVEM ser relevantes
+    for e in result["evidences"]:
+        assert check_evidence_relevance(
+            "Existe adesivo emagrecedor com Mounjaro à venda por 39 reais",
+            f"{e.get('title', '')} {e.get('snippet', '')}",
+        )
+    # As fontes não devem conter menção a urna eletrônica nem carro na Alemanha
+    assert not any("urna" in s.lower() for s in result["sources"])
+    assert not any("carro" in s.lower() for s in result["sources"])
+
 
 
 
