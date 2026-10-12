@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import AsyncMock, MagicMock
 from app.analyzers.fact_check_api import (
     SourceTier,
     get_source_tier,
@@ -749,6 +750,80 @@ async def test_check_single_claim_sources_excludes_irrelevant_evidences():
     # As fontes não devem conter menção a urna eletrônica nem carro na Alemanha
     assert not any("urna" in s.lower() for s in result["sources"])
     assert not any("carro" in s.lower() for s in result["sources"])
+
+
+def test_is_trusted_source_whitelist_validation():
+    """Valida a restrição estrita de fontes confiáveis (Anvisa, Ministérios, IFCN, Imprensa)."""
+    from app.analyzers.fact_check_api import is_trusted_source
+
+    # Fontes permitidas
+    assert is_trusted_source("Anvisa", "https://www.gov.br/anvisa/noticia") is True
+    assert is_trusted_source("G1 / Fato ou Fake", "https://g1.globo.com/fato-ou-fake/noticia.ghtml") is True
+    assert is_trusted_source("Agência Lupa", "https://lupa.news/artigo") is True
+    assert is_trusted_source("PubMed / MEDLINE (NIH)", "https://pubmed.ncbi.nlm.nih.gov/123456/") is True
+    assert is_trusted_source("Wikipedia (Enciclopédia Biomédica)", "https://pt.wikipedia.org/wiki/Tirzepatida") is True
+
+    # Fontes rejeitadas (blogs, sites aleatórios, redes sociais)
+    assert is_trusted_source("Blog do Zé", "https://blogdoze.blogspot.com/post") is False
+    assert is_trusted_source("Site Misterioso", "https://curamilagrosa.xyz/oferta") is False
+    assert is_trusted_source("Portal Desconhecido", "https://noticiasurgentes.com/furo") is False
+
+
+@pytest.mark.asyncio
+async def test_pubmed_descriptor_extraction_and_negative_proof():
+    """Valida a extração de descritores biomédicos e a prova científica negativa no PubMed."""
+    analyzer = FactCheckApiAnalyzer()
+
+    # 1. Extração de descritores
+    descriptors = await analyzer._extract_biomedical_descriptors("O adesivo emagrecedor com Mounjaro cura diabetes")
+    assert descriptors["substance_en"] == "tirzepatide"
+    assert "transdermal" in descriptors["delivery_en"] or "patch" in descriptors["delivery_en"]
+
+    # 2. Busca no PubMed com mock de 0 resultados (prova negativa)
+    mock_esearch_resp = MagicMock()
+    mock_esearch_resp.status_code = 200
+    mock_esearch_resp.json.return_value = {
+        "esearchresult": {"count": "0", "idlist": []}
+    }
+
+    mock_client = AsyncMock()
+    mock_client.get.return_value = mock_esearch_resp
+    analyzer.http_client = mock_client
+
+    evidences = await analyzer.search_pubmed_literature("O adesivo emagrecedor com Mounjaro cura diabetes")
+    assert len(evidences) >= 1
+    ev = evidences[0]
+    assert "PubMed" in ev.source_name
+    assert "Ausência de Ensaios Clínicos" in ev.title
+    assert ev.stance == "REFUTES"
+    assert ev.is_relevant is True
+
+
+@pytest.mark.asyncio
+async def test_wikipedia_pharmacological_route_refutation():
+    """Valida a consulta farmacológica à Wikipedia e refutação por incompatibilidade de via."""
+    analyzer = FactCheckApiAnalyzer()
+
+    mock_wiki_resp = MagicMock()
+    mock_wiki_resp.status_code = 200
+    mock_wiki_resp.json.return_value = {
+        "title": "Tirzepatida",
+        "extract": "Tirzepatida é um fármaco para diabetes tipo 2 administrado semanalmente por via subcutânea.",
+        "content_urls": {"desktop": {"page": "https://pt.wikipedia.org/wiki/Tirzepatida"}},
+    }
+
+    mock_client = AsyncMock()
+    mock_client.get.return_value = mock_wiki_resp
+    analyzer.http_client = mock_client
+
+    evidences = await analyzer.search_pharmacological_wikipedia("Existe adesivo emagrecedor com Mounjaro à venda")
+    assert len(evidences) >= 1
+    ev = evidences[0]
+    assert "Wikipedia" in ev.source_name
+    assert "Tirzepatida" in ev.title
+    assert "Incompatibilidade Farmacológica" in (ev.rating or "")
+    assert ev.stance == "REFUTES"
+
 
 
 

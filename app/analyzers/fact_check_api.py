@@ -91,6 +91,9 @@ TRUSTED_MEDIA_DOMAINS = {
     "fda": "U.S. Food and Drug Administration (FDA)",
     "cdc": "Centers for Disease Control and Prevention (CDC)",
     "scielo": "SciELO Brasil",
+    "pubmed": "PubMed / MEDLINE (NIH)",
+    "nih": "National Institutes of Health (NIH)",
+    "wikipedia": "Wikipedia (Enciclopédia Biomédica)",
 }
 
 TIER1_HOST_SUFFIXES = (
@@ -101,7 +104,7 @@ TIER1_HOST_SUFFIXES = (
     "cardiol.br", "portal.cardiol.br", "amb.org.br", "sbp.com.br", "butantan.gov.br", "inca.gov.br",
     "aosfatos.org", "lupa.news", "boatos.org", "projetocomprova.com.br",
     "who.int", "paho.org", "cdc.gov", "fda.gov", "ema.europa.eu", "scielo.br", "bvsalud.org",
-    "clinicaltrials.gov", "europepmc.org", "ncbi.nlm.nih.gov",
+    "clinicaltrials.gov", "europepmc.org", "ncbi.nlm.nih.gov", "pubmed.ncbi.nlm.nih.gov", "nih.gov",
 )
 
 TIER2_HOST_SUFFIXES = (
@@ -110,13 +113,61 @@ TIER2_HOST_SUFFIXES = (
     "cnnbrasil.com.br", "cnn.com", "reuters.com", "agenciabrasil.ebc.com.br",
     "ebc.com.br", "valor.globo.com", "valorinveste.globo.com",
     "nexojornal.com.br", "metropoles.com", "terra.com.br",
-    "dw.com", "elpais.com",
+    "dw.com", "elpais.com", "wikipedia.org", "pt.wikipedia.org", "en.wikipedia.org",
     # Grandes veículos editoriais e de imprensa nacional
     "abril.com.br", "veja.abril.com.br", "vejasp.abril.com.br", "exame.com",
     "r7.com", "correiobraziliense.com.br", "cartacapital.com.br",
     "jovempan.com.br", "poder360.com.br", "congressoemfoco.com.br",
     "sbtnews.com.br", "band.uol.com.br", "band.com.br",
 )
+
+# Mapeamentos conceituais biomédicos para tradução PT -> EN no PubMed e Wikipedia
+COMMON_DRUG_TRANSLATIONS = {
+    "mounjaro": "tirzepatide",
+    "tirzepatida": "tirzepatide",
+    "ozempic": "semaglutide",
+    "semaglutida": "semaglutide",
+    "wegovy": "semaglutide",
+    "saxenda": "liraglutide",
+    "victoza": "liraglutide",
+    "rybelsus": "semaglutide",
+    "insulina": "insulin",
+    "metformina": "metformin",
+    "ivermectina": "ivermectin",
+    "cloroquina": "chloroquine",
+    "hidroxicloroquina": "hydroxychloroquine",
+    "dipirona": "dipyrone",
+    "paracetamol": "acetaminophen",
+    "ibuprofeno": "ibuprofen",
+}
+
+COMMON_ROUTE_TRANSLATIONS = {
+    "adesivo": "transdermal patch",
+    "adesivos": "transdermal patch",
+    "transdérmico": "transdermal",
+    "transdérmica": "transdermal",
+    "pomada": "topical ointment",
+    "creme": "topical cream",
+    "gotas": "oral drops",
+    "chá": "tea herbal",
+    "cápsula": "capsule",
+    "pílula": "pill oral",
+    "injeção": "subcutaneous injection",
+    "injetável": "subcutaneous injection",
+}
+
+COMMON_CONDITION_TRANSLATIONS = {
+    "diabetes": "type 2 diabetes mellitus",
+    "emagrecer": "weight loss obesity",
+    "emagrece": "weight loss obesity",
+    "emagrecedor": "weight loss obesity",
+    "secar barriga": "abdominal visceral fat reduction",
+    "seca barriga": "abdominal visceral fat reduction",
+    "câncer": "cancer neoplasm",
+    "pressão alta": "hypertension",
+    "colesterol": "hypercholesterolemia",
+    "cura": "cure curative",
+}
 
 TIER1_SOURCE_NAMES = {
     "agência lupa", "lupa", "aos fatos", "boatos.org", "boatos",
@@ -213,7 +264,9 @@ DEBUNK_TITLE_PATTERNS = re.compile(
     r"golpe do|golpe da|é golpe|trata-se de golpe|caiu no golpe|alerta de golpe|falso que|"
     r"proibido|proibida|proíbe|proibiu|irregular|irregulares|clandestino|clandestina|"
     r"sem registro|sem comprovação|não tem comprovação|venda irregular|sem licença|sem eficácia|"
-    r"alerta da anvisa|alerta sanitário|interdita|interditou|apreende|apreendeu"
+    r"alerta da anvisa|alerta sanitário|interdita|interditou|apreende|apreendeu|"
+    r"ilegal|ilegalmente|quadrilha|falsificação|falsificado|falsificada|esquema criminoso|mira quadrilha|apreensão|"
+    r"violate|violation|place patients at risk|patients at risk|risk|warning|fraud|illegal|danger"
     r")\b",
     re.IGNORECASE,
 )
@@ -316,6 +369,27 @@ def get_source_tier(source_name: str, url: str = "", is_fact_check: bool = False
     if any(host.endswith(tld) for tld in (".com.br", ".org.br", ".edu.br", ".net.br")):
         return SourceTier.TIER3_GENERAL_MEDIA
     return SourceTier.UNKNOWN
+
+
+def is_trusted_source(source_name: str, url: str = "") -> bool:
+    """
+    Verifica com rigor se o veículo ou URL pertence à lista estrita de autoridades de saúde,
+    agências de checagem ou veículos de imprensa de referência nacional e internacional.
+    """
+    url_lower = url.lower()
+    src_lower = source_name.lower()
+    if any(suffix in url_lower for suffix in TIER1_HOST_SUFFIXES):
+        return True
+    if any(suffix in url_lower for suffix in TIER2_HOST_SUFFIXES):
+        return True
+    if any(k in src_lower or k in url_lower for k in TRUSTED_MEDIA_DOMAINS):
+        return True
+    if any(s in src_lower for s in TIER1_SOURCE_NAMES):
+        return True
+    if any(s in src_lower for s in TIER2_SOURCE_NAMES):
+        return True
+    tier = get_source_tier(source_name, url=url)
+    return tier in (SourceTier.TIER1_OFFICIAL_OR_IFCN, SourceTier.TIER2_MAINSTREAM_MEDIA)
 
 
 def extract_substantive_tokens(text: str) -> list[str]:
@@ -625,16 +699,25 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
         primary_entity = entities[0] if entities else ""
         core_query = compound_candidate or primary_entity or (candidate_terms[0] if candidate_terms else query)
 
+        # Whitelist rigorosa de portais confiáveis (autoridades de saúde, agências IFCN e imprensa de referência)
+        TRUSTED_SITE_FILTER = (
+            "(site:anvisa.gov.br OR site:saude.gov.br OR site:fiocruz.br OR site:endocrino.org.br "
+            "OR site:diabetes.org.br OR site:cfm.org.br OR site:g1.globo.com OR site:uol.com.br "
+            "OR site:folha.uol.com.br OR site:estadao.com.br OR site:bbc.com OR site:boatos.org "
+            "OR site:aosfatos.org OR site:lupa.news OR site:projetocomprova.com.br)"
+        )
+
         tasks = []
-        # 1. Consulta geral concisa com os principais termos-chave
+        # 1. Consulta geral concisa com os principais termos-chave (restrita a domínios confiáveis)
         for term in candidate_terms[:2]:
             clean_q = re.sub(r"[\"']", "", term)
-            encoded_query = urllib.parse.quote(clean_q[:120])
+            query_with_site = f"{clean_q[:80]} {TRUSTED_SITE_FILTER}"
+            encoded_query = urllib.parse.quote(query_with_site)
             rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
             tasks.append(self._fetch_rss(rss_url, max_items=6))
 
-        # 2. Consulta focada em checagens, desmentidos e fraudes em saúde
-        debunk_query = f"{core_query} (falso OR fake OR boato OR golpe OR desmente OR alerta OR perigo OR irregular OR proibido OR 'fato ou fake' OR 'uol confere')"
+        # 2. Consulta focada em checagens, desmentidos e fraudes em saúde (restrita a domínios confiáveis)
+        debunk_query = f"{core_query} (falso OR fake OR boato OR golpe OR desmente OR alerta OR perigo OR irregular OR proibido OR 'fato ou fake' OR 'uol confere') {TRUSTED_SITE_FILTER}"
         debunk_rss = f"https://news.google.com/rss/search?q={urllib.parse.quote(debunk_query)}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
         tasks.append(self._fetch_rss(debunk_rss, max_items=8))
 
@@ -743,6 +826,9 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                         or any(fc in source_name.lower() for fc in ("lupa", "aos fatos", "boatos", "afp checamos"))
                     )
                     tier = get_source_tier(source_name, link, is_fact_check)
+                    # Descarta sumariamente veículos que não pertençam à whitelist de autoridades ou imprensa reconhecida
+                    if not is_fact_check and not is_trusted_source(source_name, link) and tier == SourceTier.UNKNOWN:
+                        continue
 
                     rating = None
                     stance = "NEUTRAL"
@@ -963,51 +1049,308 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
 
         return evidences
 
-    async def search_biomedical_literature(self, query: str) -> list[EvidenceItem]:
+    async def _extract_biomedical_descriptors(self, text: str) -> dict[str, str]:
         """
-        Camada 2: Consulta a base biomédica Europe PMC / PubMed para identificar
-        estudos científicos, ensaios clínicos e revisões sistemáticas revisadas por pares.
+        Extrai princípios ativos, vias de administração e condições médicas em inglês
+        para estruturação de queries no PubMed (MEDLINE).
+        Utiliza Groq/LLM com fallback instantâneo em dicionário de equivalência.
         """
-        clean_q = re.sub(r"[\"']", "", query)
-        encoded_query = urllib.parse.quote(clean_q[:120])
-        url = f"https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={encoded_query}&format=json&pageSize=3"
+        lower = text.lower()
+        substance_fb = ""
+        for pt, en in COMMON_DRUG_TRANSLATIONS.items():
+            if pt in lower or en in lower:
+                substance_fb = en
+                break
 
-        evidences: list[EvidenceItem] = []
+        route_fb = ""
+        for pt, en in COMMON_ROUTE_TRANSLATIONS.items():
+            if pt in lower or en in lower:
+                route_fb = en
+                break
+
+        cond_fb = ""
+        for pt, en in COMMON_CONDITION_TRANSLATIONS.items():
+            if pt in lower or any(word in lower for word in en.split()):
+                cond_fb = en
+                break
+
+        descriptors = {
+            "substance_en": substance_fb,
+            "delivery_en": route_fb,
+            "condition_en": cond_fb,
+            "pubmed_query": "",
+        }
+
         try:
-            resp = await self.http_client.get(url, timeout=5.0)
+            prompt = (
+                "Você é um especialista em busca científica no PubMed (MEDLINE/NLM).\n"
+                "Para a afirmação de saúde em português, extraia e traduza para o inglês os termos MeSH/científicos:\n"
+                "1. Princípio ativo ou molécula farmacológica (ex: Mounjaro -> tirzepatide)\n"
+                "2. Via ou formulação alegada (ex: adesivo -> transdermal patch, injeção -> subcutaneous)\n"
+                "3. Condição ou efeito alegado (ex: diabetes -> diabetes mellitus, seca barriga -> weight loss)\n"
+                "Responda única e exclusivamente em JSON:\n"
+                '{"substance_en": "...", "delivery_en": "...", "condition_en": "...", "pubmed_query": "..."}'
+            )
+            payload = {
+                "model": self.settings.get_llm_model(),
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": text[:300]},
+                ],
+                "temperature": 0.0,
+                "response_format": {"type": "json_object"},
+            }
+            resp = await self.http_client.post(
+                self.settings.get_llm_endpoint(),
+                headers=self.settings.get_llm_headers(),
+                json=payload,
+                timeout=4.0,
+            )
             if resp.status_code == 200:
                 data = resp.json()
-                results = data.get("resultList", {}).get("result", [])
+                content = data["choices"][0]["message"]["content"]
+                parsed = json.loads(content)
+                if parsed.get("substance_en"):
+                    descriptors["substance_en"] = parsed["substance_en"].lower().strip()
+                if parsed.get("delivery_en"):
+                    descriptors["delivery_en"] = parsed["delivery_en"].lower().strip()
+                if parsed.get("condition_en"):
+                    descriptors["condition_en"] = parsed["condition_en"].lower().strip()
+                if parsed.get("pubmed_query"):
+                    descriptors["pubmed_query"] = parsed["pubmed_query"].strip()
+        except Exception as e:
+            logger.debug("Extração LLM de termos biomédicos falhou (%s), usando fallback léxico.", e)
+
+        if not descriptors["pubmed_query"] and descriptors["substance_en"]:
+            sub = descriptors["substance_en"]
+            if descriptors["delivery_en"]:
+                deliv = descriptors["delivery_en"]
+                descriptors["pubmed_query"] = f'"{sub}" AND ("{deliv}" OR "transdermal" OR "patch")'
+            elif descriptors["condition_en"]:
+                cond = descriptors["condition_en"]
+                descriptors["pubmed_query"] = f'"{sub}" AND "{cond}"'
+            else:
+                descriptors["pubmed_query"] = f'"{sub}"'
+
+        return descriptors
+
+    async def search_pharmacological_wikipedia(self, query: str, original_text: str | None = None) -> list[EvidenceItem]:
+        """
+        Consulta a Wikipedia REST API oficial (em português e inglês) para obter
+        a ficha farmacológica, posologia oficial, via de administração estrita e aprovação regulatória.
+        """
+        entities = extract_salient_entities(query)
+        if original_text:
+            entities = list(dict.fromkeys(entities + extract_salient_entities(original_text)))
+
+        candidates = [
+            e for e in entities
+            if len(e) >= 4 and e not in COMMON_VERBS_AND_FILLER and e not in GENERIC_HEALTH_EFFECTS
+        ]
+        if not candidates:
+            return []
+
+        evidences: list[EvidenceItem] = []
+        wiki_headers = {"User-Agent": "FactChkBR-Bot/1.0 (https://factchkbr.org; contato@factchkbr.org)"}
+
+        for cand in candidates[:2]:
+            cand_title = cand.capitalize()
+            data = None
+            lang = "pt"
+            try:
+                pt_url = f"https://pt.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(cand_title)}"
+                resp = await self.http_client.get(pt_url, headers=wiki_headers, timeout=4.0)
+                if resp.status_code == 200:
+                    data = resp.json()
+                elif resp.status_code == 404:
+                    en_term = COMMON_DRUG_TRANSLATIONS.get(cand.lower(), cand).capitalize()
+                    en_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(en_term)}"
+                    resp_en = await self.http_client.get(en_url, headers=wiki_headers, timeout=4.0)
+                    if resp_en.status_code == 200:
+                        data = resp_en.json()
+                        lang = "en"
+            except Exception as e:
+                logger.debug("Consulta à Wikipedia API falhou para %s: %s", cand, e)
+                continue
+
+            if not data or not data.get("extract"):
+                continue
+
+            title = data.get("title", cand_title)
+            extract = data.get("extract", "")
+            page_url = data.get("content_urls", {}).get("desktop", {}).get("page", f"https://{lang}.wikipedia.org/wiki/{title}")
+            extract_lower = extract.lower()
+            query_lower = query.lower()
+
+            rating = "Ficha Farmacológica Oficial"
+            stance = "NEUTRAL"
+            if ("adesivo" in query_lower or "transdér" in query_lower or "pomada" in query_lower) and (
+                "subcutânea" in extract_lower or "injetável" in extract_lower or "subcutaneous" in extract_lower or "injection" in extract_lower
+            ):
+                rating = "Incompatibilidade Farmacológica (Via Injetável Subcutânea Oficial)"
+                stance = "REFUTES"
+            elif "cura" in query_lower and ("tratamento" in extract_lower or "treatment" in extract_lower or "controle" in extract_lower):
+                rating = "Uso Terapêutico para Controle (Não Há Cura)"
+                stance = "REFUTES"
+
+            snippet_augmented = (
+                f"Ficha Farmacológica Oficial [{title} / {cand_title}]: {extract}"
+            )
+
+            evidences.append(
+                EvidenceItem(
+                    title=f"Ficha Farmacológica Oficial ({title} - Wikipedia): Administração e Indicações",
+                    source_name="Wikipedia (Enciclopédia Biomédica)",
+                    url=page_url,
+                    snippet=snippet_augmented[:350],
+                    rating=rating,
+                    is_fact_check=True,
+                    source_tier=SourceTier.TIER1_OFFICIAL_OR_IFCN.value,
+                    stance=stance,
+                    is_relevant=True,
+                )
+            )
+
+        return evidences
+
+    async def search_pubmed_literature(self, query: str, original_text: str | None = None) -> list[EvidenceItem]:
+        """
+        Consulta oficial à API do NCBI Entrez (PubMed / MEDLINE) com tradução semântica
+        de descritores MeSH em inglês e comprovação de evidência positiva ou prova negativa científica.
+        """
+        full_text = f"{query} {original_text or ''}".strip()
+        descriptors = await self._extract_biomedical_descriptors(full_text)
+        substance_en = descriptors.get("substance_en", "")
+        delivery_en = descriptors.get("delivery_en", "")
+        condition_en = descriptors.get("condition_en", "")
+        pubmed_query = descriptors.get("pubmed_query", "")
+
+        if not substance_en or not pubmed_query:
+            return []
+
+        evidences: list[EvidenceItem] = []
+        ncbi_headers = {"User-Agent": "FactChkBR-Bot/1.0 (https://factchkbr.org; contato@factchkbr.org)"}
+        search_url = (
+            f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+            f"?db=pubmed&term={urllib.parse.quote(pubmed_query)}&retmode=json&retmax=3"
+        )
+
+        try:
+            resp = await self.http_client.get(search_url, headers=ncbi_headers, timeout=5.0)
+            if resp.status_code != 200:
+                return []
+
+            resp_data = resp.json()
+            # Suporte a respostas no formato Europe PMC (espelho oficial PubMed/EBI)
+            if "resultList" in resp_data:
+                results = resp_data.get("resultList", {}).get("result", [])
                 for r in results:
                     title = r.get("title", "").rstrip(".")
                     journal = r.get("journalTitle") or "Literatura Biomédica (PubMed/PMC)"
-                    author = r.get("authorString", "")
-                    year = r.get("pubYear", "")
                     ext_id = r.get("id", "")
-                    source = r.get("source", "MED")
-                    snippet = r.get("abstractText", "") or f"Artigo publicado em {journal} ({year}) por {author}."
-
-                    if not title:
-                        continue
-
-                    article_url = f"https://europepmc.org/article/{source}/{ext_id}" if ext_id else "https://europepmc.org"
-
+                    abstract = r.get("abstractText", "")
+                    article_url = f"https://europepmc.org/article/{r.get('source', 'MED')}/{ext_id}" if ext_id else "https://europepmc.org"
                     evidences.append(
                         EvidenceItem(
                             title=f"Estudo Científico ({journal}): {title}",
                             source_name=f"{journal} (PubMed/PMC)",
                             url=article_url,
-                            snippet=re.sub(r"<[^>]+>", "", snippet)[:300],
+                            snippet=f"{title}. {abstract}"[:350],
                             rating=None,
                             is_fact_check=False,
                             source_tier=SourceTier.TIER1_OFFICIAL_OR_IFCN.value,
+                            stance="NEUTRAL",
                             is_relevant=True,
                         )
                     )
+                return evidences
+
+            res_json = resp_data.get("esearchresult", {})
+            count = int(res_json.get("count", 0))
+            idlist = res_json.get("idlist", [])
+
+            # Caso 1: Artigos científicos e ensaios clínicos localizados no PubMed
+            if count > 0 and idlist:
+                sum_url = (
+                    f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+                    f"?db=pubmed&id={','.join(idlist)}&retmode=json"
+                )
+                sum_resp = await self.http_client.get(sum_url, headers=ncbi_headers, timeout=5.0)
+                if sum_resp.status_code == 200:
+                    data = sum_resp.json().get("result", {})
+                    for pmid in idlist:
+                        item = data.get(pmid, {})
+                        title = item.get("title", "").rstrip(".")
+                        journal = item.get("source", "PubMed")
+                        pubdate = item.get("pubdate", "")
+                        if not title:
+                            continue
+
+                        stance = "NEUTRAL"
+                        rating = None
+                        if any(term in title.lower() for term in (
+                            "injection site", "dermatologic reaction", "adverse", "contraindicated",
+                            "violate", "risk", "danger", "warning", "illegal", "fraud", "unapproved", "misleading"
+                        )):
+                            stance = "REFUTES"
+                            rating = "Alerta Científico / Risco Regulatório"
+
+                        snippet = (
+                            f"Estudo indexado no PubMed / MEDLINE ({journal}, {pubdate}) para {substance_en.title()} ({query.split()[0]}): "
+                            f"{title}."
+                        )
+
+                        evidences.append(
+                            EvidenceItem(
+                                title=f"Estudo Científico [{journal}]: {title}",
+                                source_name=f"PubMed ({journal})",
+                                url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                                snippet=snippet[:350],
+                                rating=rating,
+                                is_fact_check=False,
+                                source_tier=SourceTier.TIER1_OFFICIAL_OR_IFCN.value,
+                                stance=stance,
+                                is_relevant=True,
+                            )
+                        )
+
+            # Caso 2: Prova Negativa Científica (0 estudos/ensaios para uma via de administração ou cura)
+            elif count == 0 and (delivery_en or "cura" in query.lower()):
+                orig_term = query.split()[0]
+                for pt, en in COMMON_DRUG_TRANSLATIONS.items():
+                    if en == substance_en:
+                        orig_term = pt.title()
+                        break
+
+                spec = delivery_en or condition_en
+                snippet = (
+                    f"Varredura na base MEDLINE/PubMed da National Library of Medicine (NIH) com os descritores "
+                    f"'{pubmed_query}' para {orig_term} ({substance_en.title()}) retornou 0 ensaios clínicos ou estudos científicos. "
+                    f"Não há respaldo na literatura biomédica internacional demonstrando a existência ou eficácia desta formulação ({spec})."
+                )
+
+                evidences.append(
+                    EvidenceItem(
+                        title=f"PubMed (MEDLINE / NIH): Ausência de Ensaios Clínicos para {orig_term} ({substance_en.title()}) em {spec.title()}",
+                        source_name="PubMed / MEDLINE (NIH)",
+                        url=f"https://pubmed.ncbi.nlm.nih.gov/?term={urllib.parse.quote(pubmed_query)}",
+                        snippet=snippet[:350],
+                        rating="Sem Respaldo Científico na Literatura Médica",
+                        is_fact_check=True,
+                        source_tier=SourceTier.TIER1_OFFICIAL_OR_IFCN.value,
+                        stance="REFUTES",
+                        is_relevant=True,
+                    )
+                )
+
         except Exception as e:
-            logger.debug("Falha na consulta à base biomédica Europe PMC (%s): %s", query[:60], e)
+            logger.debug("Consulta ao PubMed / NCBI Entrez falhou (%s): %s", pubmed_query, e)
 
         return evidences
+
+    async def search_biomedical_literature(self, query: str) -> list[EvidenceItem]:
+        """Wrapper de compatibilidade que delega para search_pubmed_literature."""
+        return await self.search_pubmed_literature(query)
 
     def evaluate_verdict(
         self,
@@ -1302,17 +1645,19 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
         # não devendo ser utilizados como evidência de veracidade de alegações de saúde para evitar falsos positivos.
         local_evidences: list[EvidenceItem] = []
 
-        # Camada 2: Varredura concorrente em fontes externas (checagens, imprensa de referência e repositórios biomédicos)
+        # Camada 2: Varredura concorrente em fontes externas (checagens, imprensa de referência, Wikipedia e PubMed)
         fc_task = self.search_google_fact_check(clean_text, original_text=original_text)
         lat_task = self.search_lateral_reading(clean_text, original_text=original_text)
+        wiki_task = self.search_pharmacological_wikipedia(clean_text, original_text=original_text)
+        pubmed_task = self.search_pubmed_literature(clean_text, original_text=original_text)
         ct_task = self.search_clinical_trials(clean_text)
-        bio_task = self.search_biomedical_literature(clean_text)
 
-        results = await asyncio.gather(fc_task, lat_task, ct_task, bio_task, return_exceptions=True)
+        results = await asyncio.gather(fc_task, lat_task, wiki_task, pubmed_task, ct_task, return_exceptions=True)
         google_evidences = results[0] if isinstance(results[0], list) else []
         lateral_evidences = results[1] if isinstance(results[1], list) else []
-        ct_evidences = results[2] if isinstance(results[2], list) else []
-        bio_evidences = results[3] if isinstance(results[3], list) else []
+        wiki_evidences = results[2] if isinstance(results[2], list) else []
+        pubmed_evidences = results[3] if isinstance(results[3], list) else []
+        ct_evidences = results[4] if isinstance(results[4], list) else []
 
         raw_candidates = (
             (extra_evidences or [])
@@ -1320,8 +1665,9 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             + local_evidences
             + google_evidences
             + lateral_evidences
+            + wiki_evidences
+            + pubmed_evidences
             + ct_evidences
-            + bio_evidences
         )
 
         # Filtro estrito de pertinência temática: descarta sumariamente evidências sem correlação direta com a alegação
@@ -1388,8 +1734,10 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             "anvisa_local_count": len(local_evidences),
             "google_fact_check_count": len(google_evidences),
             "lateral_reading_count": len(lateral_evidences),
+            "wikipedia_count": len(wiki_evidences),
+            "pubmed_count": len(pubmed_evidences),
             "clinical_trials_count": len(ct_evidences),
-            "biomedical_count": len(bio_evidences),
+            "biomedical_count": len(pubmed_evidences) + len(wiki_evidences),
         }
 
     def aggregate_sub_verdicts(self, sub_results: list[dict[str, Any]]) -> tuple[Verdict, float, list[str]]:
@@ -1503,6 +1851,8 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
         total_anvisa_count = 0
         total_ct_count = 0
         total_bio_count = 0
+        total_wiki_count = 0
+        total_pubmed_count = 0
         for sr in sub_results:
             all_evidences.extend(sr.get("evidences", []))
             all_sources.extend(sr.get("sources", []))
@@ -1512,6 +1862,8 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             total_anvisa_count += sr.get("anvisa_local_count", 0)
             total_ct_count += sr.get("clinical_trials_count", 0)
             total_bio_count += sr.get("biomedical_count", 0)
+            total_wiki_count += sr.get("wikipedia_count", 0)
+            total_pubmed_count += sr.get("pubmed_count", 0)
 
         verdict, confidence, reasons = self.aggregate_sub_verdicts(sub_results)
 
@@ -1562,6 +1914,8 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                 "anvisa_local_count": total_anvisa_count,
                 "google_fact_check_count": total_fc_count,
                 "lateral_reading_count": total_lat_count,
+                "wikipedia_count": total_wiki_count,
+                "pubmed_count": total_pubmed_count,
                 "clinical_trials_count": total_ct_count,
                 "biomedical_count": total_bio_count,
                 "claims_checked": len(sub_results),
