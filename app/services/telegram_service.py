@@ -300,6 +300,15 @@ class TelegramService:
                 lines.append(f"• {html.escape(r)}")
             lines.append("")
 
+        # Riscos à saúde e ao cidadão
+        if analysis.risks_assessment:
+            clean_risks = [clean_text_for_public(rk) for rk in analysis.risks_assessment if rk]
+            if clean_risks:
+                lines.append("⚠️ <b>Riscos associados a este boato:</b>")
+                for rk in clean_risks[:3]:
+                    lines.append(f"• {html.escape(rk)}")
+                lines.append("")
+
         # Fontes consultadas OBRIGATORIAMENTE COM LINK
         linked_sources = build_accessible_sources(analysis.sources)
         if linked_sources:

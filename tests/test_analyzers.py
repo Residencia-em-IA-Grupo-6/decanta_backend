@@ -435,15 +435,18 @@ def test_fact_check_api_empty_evidences():
 async def test_llm_judge_offline_fallback():
     """Valida comportamento defensivo do LLM Judge quando o provedor estiver offline."""
     from app.analyzers.llm_judge import LlmJudgeAnalyzer
+    from unittest.mock import patch
 
     judge = LlmJudgeAnalyzer()
-    res = await judge.analyze("Alegação de teste para fallback", [])
+    with patch.object(judge.settings, "LLM_PROVIDER", "ollama"), \
+         patch.object(judge.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:9999"):
+        res = await judge.analyze("Alegação de teste para fallback", [])
 
     assert isinstance(res, AnalyzerResult)
     assert res.analyzer_name == "llm_judge"
     assert res.verdict == Verdict.INCONCLUSIVO
     assert res.confidence == 0.50
-    assert "offline" in res.summary.lower() or "ollama" in res.summary.lower()
+    assert "offline" in res.summary.lower() or "ollama" in res.summary.lower() or "servidor" in res.summary.lower()
 
 
 def test_select_primary_assertion_by_category():
@@ -886,12 +889,15 @@ async def test_llm_judge_honors_plumb_verdicts_and_fallback():
         },
     ]
 
-    # Chamada sem servidor LLM rodando (fallback acionado)
-    res = await judge.analyze_with_context(
-        text="Adesivo Mounjaro emagrece sem academia mas Anvisa aprovou Mounjaro injetável",
-        urls=[],
-        sub_claims=sub_claims_input,
-    )
+    # Chamada com fallback acionado para validar persistência de vereditos do motor
+    from unittest.mock import patch
+    with patch.object(judge.settings, "LLM_PROVIDER", "ollama"), \
+         patch.object(judge.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:9999"):
+        res = await judge.analyze_with_context(
+            text="Adesivo Mounjaro emagrece sem academia mas Anvisa aprovou Mounjaro injetável",
+            urls=[],
+            sub_claims=sub_claims_input,
+        )
 
     assert res.analyzer_name == "llm_judge"
     assert res.verdict == Verdict.SUSPEITO  # Conteúdo misto (FAKE + VERDADEIRO)
@@ -899,6 +905,35 @@ async def test_llm_judge_honors_plumb_verdicts_and_fallback():
     assert res.raw_details["sub_claims"][0]["verdict"] == Verdict.FAKE
     assert res.raw_details["sub_claims"][1]["verdict"] == Verdict.VERDADEIRO
     assert "JevK5-Lite" in res.summary or "modelo de decisão" in res.summary.lower() or "classificador de decisão" in res.summary.lower()
+
+
+@pytest.mark.asyncio
+async def test_llm_judge_live_groq_risk_assessment():
+    """Valida execução da LLM Judge via Groq com síntese explicativa e avaliação de riscos."""
+    from app.analyzers.llm_judge import LlmJudgeAnalyzer
+
+    judge = LlmJudgeAnalyzer()
+    if not judge.settings.GROQ_API_KEY:
+        pytest.skip("GROQ_API_KEY não configurada")
+
+    res = await judge.analyze_with_context(
+        text="Adesivo de Mounjaro por 29 reais seca a barriga sem fazer academia",
+        urls=[],
+        sub_claims=[
+            {
+                "statement": "Adesivo de Mounjaro emagrece sem academia",
+                "verdict": Verdict.FAKE,
+                "confidence": 0.95,
+                "justification": "Mounjaro não existe em adesivo segundo a Anvisa.",
+            }
+        ],
+    )
+    assert res.analyzer_name == "llm_judge"
+    assert res.verdict == Verdict.FAKE
+    assert res.confidence >= 0.85
+    assert len(res.summary) > 20
+    risks = res.raw_details.get("risks_assessment", [])
+    assert len(risks) >= 1
 
 
 

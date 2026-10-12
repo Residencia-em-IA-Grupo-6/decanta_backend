@@ -203,8 +203,16 @@ def format_cli_result(res: AnalyzeResponse, total_duration: float | None = None)
             badge = v_icons.get(sc.verdict, sc.verdict.value)
             print(f"   [{i}] {badge} ({sc.confidence * 100:.1f}%): \"{sc.statement}\"")
             print(f"       └─ Justificativa: {sc.justification}")
+            if sc.risks:
+                print(f"       └─ Risco:         {', '.join(sc.risks[:2])}")
             if sc.sources:
                 print(f"       └─ Fontes:        {', '.join(sc.sources[:2])}")
+        print()
+
+    if res.risks_assessment:
+        print(f"⚠️  RISCOS ASSOCIADOS AO BOATO ({len(res.risks_assessment)}):")
+        for risk in res.risks_assessment:
+            print(f"   • ⚠️  {risk}")
         print()
 
     if res.reasons:

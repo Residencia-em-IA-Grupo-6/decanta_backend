@@ -472,6 +472,8 @@ class FactCheckOrchestrator:
                 elif item.get("sources"):
                     sub_sources = item["sources"]
 
+                sub_risks = item.get("risks") or (j_match.get("risks") if j_match else []) or []
+
                 consolidated_sub_claims.append(
                     SubClaimAnalysis(
                         statement=stmt,
@@ -479,6 +481,7 @@ class FactCheckOrchestrator:
                         confidence=round(sub_c, 2),
                         justification=sub_just,
                         sources=sub_sources,
+                        risks=sub_risks,
                     )
                 )
 
@@ -584,6 +587,14 @@ class FactCheckOrchestrator:
             final_confidence = 0.50
             summary = "Extração de features concluída; nenhum modelo decisor emitiu veredito final."
 
+        # Coleta avaliação de riscos associados
+        risks_assessment: list[str] = []
+        if judge_res and judge_res.raw_details:
+            risks_assessment = judge_res.raw_details.get("risks_assessment") or []
+        if not risks_assessment:
+            from app.analyzers.llm_judge import synthesize_health_risks
+            risks_assessment = synthesize_health_risks(text, dominant_verdict, consolidated_sub_claims)
+
         return AnalyzeResponse(
             claim=primary_claim or text.strip(),
             verdict=dominant_verdict,
@@ -592,6 +603,7 @@ class FactCheckOrchestrator:
             reasons=list(dict.fromkeys(filtered_reasons)),
             sources=list(dict.fromkeys(all_sources)),
             sub_claims=consolidated_sub_claims,
+            risks_assessment=risks_assessment,
         )
 
 

@@ -52,6 +52,7 @@ class SubClaimAnalysis(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0, description="Nível de confiança da análise desta proposição")
     justification: str = Field(..., description="Justificativa sucinta detalhando por que a proposição é verdadeira ou falsa")
     sources: list[str] = Field(default_factory=list, description="Fontes diretas consultadas para esta proposição")
+    risks: list[str] = Field(default_factory=list, description="Riscos específicos identificados para esta proposição")
 
     @field_validator("confidence", mode="before")
     @classmethod
@@ -69,7 +70,7 @@ class SubClaimAnalysis(BaseModel):
 
 class AnalyzeResponse(BaseModel):
     """
-    Payload de saída retornado para o Bot do Telegram.
+    Payload de saída retornado para o Bot do Telegram e CLI.
     100% compatível com a especificação de produção.
     """
     claim: str = Field(
@@ -101,6 +102,10 @@ class AnalyzeResponse(BaseModel):
     sub_claims: list[SubClaimAnalysis] = Field(
         default_factory=list,
         description="Checagem discriminada por proposição atômica identificada no texto"
+    )
+    risks_assessment: list[str] = Field(
+        default_factory=list,
+        description="Avaliação de riscos à saúde pública, riscos clínicos ou fraudes associadas ao boato"
     )
     telegram_formatted_text: str | None = Field(
         default=None,

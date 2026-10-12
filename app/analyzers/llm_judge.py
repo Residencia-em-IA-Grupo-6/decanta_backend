@@ -43,13 +43,15 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
         provider = self.settings.LLM_PROVIDER
 
         if provider.lower() == "openai" and not self.settings.OPENAI_API_KEY:
-            return self._fallback_result(text)
+            return self._fallback_result(text, sub_claims=sub_claims)
+        if provider.lower() == "groq" and not self.settings.GROQ_API_KEY:
+            return self._fallback_result(text, sub_claims=sub_claims)
 
         system_prompt = (
             "/no_think\n"
             "Você é o redator sênior e analista editorial do FactChkBR, perito em verificação de fatos e desinformação no Brasil.\n"
             "O motor neural de decisão epistêmica (JevK5-Lite) é o responsável por determinar a veracidade de cada alegação individual.\n"
-            "SUA MISSÃO EXCLUSIVA É JORNALÍSTICA E EDITORIAL: Redigir uma síntese explicativa e pedagógica ('summary'), enumerar as razões fáticas ('reasons') e elaborar justificativas claras para cada alegação em 'claims_evaluation' com base nas evidências.\n\n"
+            "SUA MISSÃO EXCLUSIVA É JORNALÍSTICA E EDITORIAL: Redigir uma síntese explicativa e pedagógica ('summary'), enumerar as razões fáticas ('reasons'), identificar os riscos objetivos à saúde e segurança ('risks_assessment') e elaborar justificativas claras para cada alegação em 'claims_evaluation' com base nas evidências.\n\n"
             "DIRETRIZES FUNDAMENTAIS:\n"
             "1. FIDELIDADE AOS VEREDITOS:\n"
             "   - Mantenha rigorosa fidelidade aos vereditos determinados pelo modelo de decisão para cada alegação.\n"
@@ -63,20 +65,25 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
             "   - Se a alegação recebida for desmentida ou refutada pelas fontes, o veredito é FAKE.\n"
             "   - Se for confirmada por fontes oficiais/jornalismo de referência, o veredito é VERDADEIRO.\n"
             "   - Se trouxer mistura de fatos reais com alegações sem respaldo, o veredito geral é SUSPEITO.\n\n"
+            "4. AVALIAÇÃO DE RISCOS À SAÚDE E AO CIDADÃO ('risks_assessment'):\n"
+            "   - Para alegações FAKE ou SUSPEITAS, aponte os riscos reais de acreditar na mensagem: abandono de tratamentos contínuos essenciais (insulina, quimioterapia), atraso diagnóstico por falsas curas caseiras, toxicidade de produtos sem registro sanitário ou fraudes financeiras com produtos falsificados.\n"
+            "   - Retorne uma lista de 1 a 4 riscos objetivos em 'risks_assessment'. Se a alegação for VERDADEIRA e segura, informe que não há riscos identificados.\n\n"
             "FORMATO DE RESPOSTA:\n"
             "Retorne RIGOROSAMENTE apenas um JSON no formato:\n"
             "{\n"
             '  "verdict": "VERDADEIRO" | "FAKE" | "SUSPEITO" | "INCONCLUSIVO",\n'
             '  "confidence": 0.0 a 1.0,\n'
             '  "summary": "Resumo explicativo detalhado e conciso de 1 a 2 parágrafos",\n'
-            '  "reasons": ["Motivo 1", "Motivo 2"],\n'
+            '  "reasons": ["Motivo factual 1", "Motivo factual 2"],\n'
+            '  "risks_assessment": ["Risco Clínico: ...", "Risco de Golpe/Sanitário: ..."],\n'
             '  "sources": ["Nome do veículo ou fonte checada"],\n'
             '  "claims_evaluation": [\n'
             '    {\n'
             '      "statement": "texto da alegação avaliada",\n'
             '      "verdict": "VERDADEIRO" | "FAKE" | "SUSPEITO" | "INCONCLUSIVO",\n'
             '      "confidence": 0.0 a 1.0,\n'
-            '      "justification": "Explicação pontual do porquê esta alegação recebeu este veredito com base nas evidências"\n'
+            '      "justification": "Explicação pontual do porquê esta alegação recebeu este veredito com base nas evidências",\n'
+            '      "risks": ["Risco específico desta alegação"]\n'
             '    }\n'
             '  ]\n'
             "}"
@@ -337,6 +344,7 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
                                     "verdict": sub_v,
                                     "confidence": sub_conf,
                                     "justification": sub_just,
+                                    "risks": item.get("risks", []),
                                 })
 
                         if polarity_corrected and len(parsed_sub_claims) == 1:
@@ -362,7 +370,12 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
                                 "verdict": sc.get("verdict", verdict),
                                 "confidence": sc.get("confidence", confidence),
                                 "justification": sc.get("justification", summary),
+                                "risks": sc.get("risks", []),
                             })
+
+                    risks_assessment = parsed.get("risks_assessment") or []
+                    if not risks_assessment:
+                        risks_assessment = synthesize_health_risks(text, verdict, parsed_sub_claims)
 
                     return AnalyzerResult(
                         analyzer_name="llm_judge",
@@ -377,6 +390,7 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
                             "provider": provider,
                             "polarity_corrected": polarity_corrected,
                             "sub_claims": parsed_sub_claims,
+                            "risks_assessment": risks_assessment,
                         },
                     )
         except Exception as e:
@@ -401,6 +415,7 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
                 f"Avaliação fundamentada pelo classificador de decisão JevK5-Lite: "
                 f"Resultado consolidado '{verdict.value}' com base em {len(sub_claims)} alegação(ões) checada(s)."
             )
+            risks = synthesize_health_risks(text, verdict, sub_claims)
             return AnalyzerResult(
                 analyzer_name="llm_judge",
                 verdict=verdict,
@@ -414,21 +429,68 @@ class LlmJudgeAnalyzer(BaseAnalyzer):
                     "provider": self.settings.LLM_PROVIDER,
                     "engine": "jevk5_subclaims",
                     "sub_claims": sub_claims,
+                    "risks_assessment": risks,
                 },
             )
 
+        risks = synthesize_health_risks(text, Verdict.INCONCLUSIVO, None)
         return AnalyzerResult(
             analyzer_name="llm_judge",
             verdict=Verdict.INCONCLUSIVO,
             confidence=0.50,
             claim=text.strip(),
-            summary="Avaliador LLM offline ou sem conexão com o servidor local do Ollama.",
+            summary="Avaliador LLM offline ou sem conexão com o servidor de inferência.",
             reasons=["Servidor LLM não respondeu à requisição de julgamento."],
-            sources=[f"Ollama local ({self.settings.OLLAMA_MODEL})"],
+            sources=[f"Fallback FactChkBR ({self.settings.LLM_PROVIDER})"],
             raw_details={
                 "model": self.settings.get_llm_model(),
                 "provider": self.settings.LLM_PROVIDER,
                 "sub_claims": [],
+                "risks_assessment": risks,
             },
         )
+
+
+def synthesize_health_risks(
+    text: str,
+    verdict: Verdict,
+    sub_claims: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    """
+    Sintetiza riscos clínicos, sanitários e de fraudes associados à desinformação,
+    garantindo que o cidadão e os operadores tenham clareza das consequências do boato.
+    """
+    if verdict == Verdict.VERDADEIRO:
+        return ["Informação verdadeira e confirmada por fontes de referência: sem risco sanitário associado."]
+
+    norm = text.lower()
+    risks: list[str] = []
+
+    # 1. Risco de Fraude / Golpe Comercial
+    if any(k in norm for k in ("adesivo", "comprar", "preço", "preco", "desconto", "frasco", "gotas", "famosas", "milagroso", "seca barriga", "emagre")):
+        risks.append("Risco de Fraude Comercial: oferta de produtos ou ativos sem registro sanitário na Anvisa, configurando golpe comercial e propaganda enganosa.")
+
+    # 2. Risco Clínico Grave (Doenças Crônicas / Patologias Graves)
+    if any(k in norm for k in ("diabetes", "glicemia", "glicose", "insulina", "câncer", "cancer", "tumor", "coração", "infarto", "pressão", "hipertens")):
+        risks.append("Risco Clínico Grave: perigo de abandono ou adiamento do tratamento médico prescrito (ex.: insulina, quimioterapia), acarretando descompensação severa ou sequelas irreversíveis.")
+
+    # 3. Risco de Automedicação / Terapias Caseiras Ilusórias
+    if any(k in norm for k in ("cura", "elimina", "jejum", "limão", "limao", "bicarbonato", "chá", "cha", "receita caseira", "cura definitiva", "milagre")):
+        risks.append("Risco de Atraso Diagnóstico: ilusão de cura por métodos caseiros não validados, postergando o atendimento com equipe médica qualificada.")
+
+    # 4. Risco Vacinal e Epidemiológico
+    if any(k in norm for k in ("vacina", "chip", "magnetismo", "autismo", "covid", "dengue", "efeito colateral grave")):
+        risks.append("Risco Sanitário Coletivo: estímulo à hesitação vacinal, comprometendo a imunidade coletiva e favorecendo a circulação de patógenos preveníveis.")
+
+    # 5. Risco de Uso Off-Label Indevido ou Fármacos Tarjados
+    if any(k in norm for k in ("ozempic", "mounjaro", "wegovy", "ivermectina", "cloroquina", "dióxido de cloro", "dióxido")):
+        risks.append("Risco de Efeitos Adversos Severos: uso indiscriminado ou off-label de princípios ativos sem prescrição e acompanhamento médico.")
+
+    if not risks:
+        if verdict == Verdict.FAKE:
+            risks.append("Risco de Desinformação em Saúde: disseminação de orientações infundadas que podem induzir comportamentos inadequados no autocuidado.")
+        elif verdict == Verdict.SUSPEITO:
+            risks.append("Risco de Descontextualização: distorção de dados científicos que gera falsas expectativas e insegurança no público.")
+
+    return risks
 

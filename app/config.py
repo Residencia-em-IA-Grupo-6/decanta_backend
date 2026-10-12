@@ -42,11 +42,16 @@ class Settings(BaseSettings):
     PLUMB_DEVICE: str = "cpu"
     LAYA_ENABLED: bool = False
     LAYA_MODEL_NAME: str = "alibiserikbay/JevK5-Lite"
-    # Configuração de Provedores de LLM (Ollama Local ou OpenAI)
-    # Padrão: "ollama" com "qwen3.5:9b" para execução local gratuita
-    LLM_PROVIDER: str = "ollama"  # "ollama" | "openai"
+    # Configuração de Provedores de LLM (Groq Cloud, Ollama Local ou OpenAI)
+    # Padrão: se GROQ_API_KEY estiver configurado, usa "groq" com Llama 3.3 70B / gpt-oss-120b
+    LLM_PROVIDER: str = "groq"  # "groq" | "ollama" | "openai"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "phi3.5"
+
+    # Configuração da Groq (LPU Ultra-Rápido Gratuito: openai/gpt-oss-120b ou qwen/qwen3.8-27b)
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
     # Chaves e integrações com APIs externas (caso LLM_PROVIDER="openai")
     GOOGLE_FACTCHECK_API_KEY: str | None = None
@@ -70,24 +75,33 @@ class Settings(BaseSettings):
     VECTOR_AUTO_INDEX: bool = True
 
     def get_llm_endpoint(self) -> str:
-        """Retorna a URL de chat completions compatível com OpenAI ou o endpoint nativo do Ollama."""
-        if self.LLM_PROVIDER.lower() == "ollama":
+        """Retorna a URL de chat completions para o provedor configurado."""
+        prov = self.LLM_PROVIDER.lower()
+        if prov == "groq":
+            return f"{self.GROQ_BASE_URL.rstrip('/')}/chat/completions"
+        if prov == "ollama":
             base = self.OLLAMA_BASE_URL.rstrip("/")
             return f"{base}/api/chat"
         return f"{self.OPENAI_BASE_URL.rstrip('/')}/chat/completions"
 
     def get_llm_model(self) -> str:
         """Retorna o identificador do modelo para o provedor ativo."""
-        if self.LLM_PROVIDER.lower() == "ollama":
+        prov = self.LLM_PROVIDER.lower()
+        if prov == "groq":
+            return self.GROQ_MODEL
+        if prov == "ollama":
             return self.OLLAMA_MODEL
         return self.OPENAI_MODEL
 
     def get_llm_headers(self) -> dict[str, str]:
         """Retorna os headers HTTP para autenticação e formato."""
         headers = {"Content-Type": "application/json"}
-        if self.LLM_PROVIDER.lower() == "openai" and self.OPENAI_API_KEY:
+        prov = self.LLM_PROVIDER.lower()
+        if prov == "groq" and self.GROQ_API_KEY:
+            headers["Authorization"] = f"Bearer {self.GROQ_API_KEY}"
+        elif prov == "openai" and self.OPENAI_API_KEY:
             headers["Authorization"] = f"Bearer {self.OPENAI_API_KEY}"
-        elif self.LLM_PROVIDER.lower() == "ollama":
+        elif prov == "ollama":
             headers["Authorization"] = "Bearer ollama"
         return headers
 
