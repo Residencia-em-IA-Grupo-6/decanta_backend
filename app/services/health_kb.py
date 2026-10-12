@@ -314,6 +314,19 @@ class HealthLocalKB:
             "mata", "matam", "matar", "morte", "mortes",
             "pessoa", "pessoas", "humano", "humanos",
             "bom", "boa", "bons", "boas", "ruim", "ruins",
+            # Formas farmacêuticas e apresentações (evita falsos positivos como Salonpas Adesivo)
+            "adesivo", "adesivos", "comprimido", "comprimidos", "capsula", "cápsula", "capsulas", "cápsulas",
+            "gotas", "gota", "xarope", "xaropes", "pomada", "pomadas", "creme", "cremes", "gel",
+            "spray", "sprays", "injecao", "injeção", "injetavel", "injetável", "injetaveis", "injetáveis",
+            "solucao", "solução", "suspensao", "suspensão", "locao", "loção", "ampola", "ampolas",
+            "pastilha", "pastilhas", "frasco", "frascos", "caneta", "canetas", "cartela", "cartelas",
+            "blister", "dose", "doses", "miligrama", "miligramas", "grama", "gramas", "seca", "seco",
+            "secas", "secos", "barriga", "barrigas", "barriga seca",
+            # Termos comerciais, monetários e gerais de transação
+            "venda", "vendas", "vender", "preco", "preço", "precos", "preços", "reais", "valor", "valores",
+            "gratis", "grátis", "promocao", "promoção", "oferta", "ofertas", "comprar", "compra",
+            "farmacia", "farmácia", "drogaria", "remedio", "remédio", "remedios", "remédios",
+            "medicamento", "medicamentos", "barato", "barata", "caro", "cara", "desconto",
         }
 
         for token in tokens:

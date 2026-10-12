@@ -78,14 +78,29 @@ TRUSTED_MEDIA_DOMAINS = {
     "ipea": "Ipea (Instituto de Pesquisa Econômica Aplicada)",
     "saude.gov": "Ministério da Saúde",
     "gov.br": "Portal Gov.br / Órgão Oficial",
+    # Sociedades Médicas e Conselhos Profissionais Notáveis
+    "endocrino": "Sociedade Brasileira de Endocrinologia e Metabologia (SBEM)",
+    "diabetes": "Sociedade Brasileira de Diabetes (SBD)",
+    "sbim": "Sociedade Brasileira de Imunizações (SBIm)",
+    "cfm": "Conselho Federal de Medicina (CFM)",
+    "cardiol": "Sociedade Brasileira de Cardiologia (SBC)",
+    "amb": "Associação Médica Brasileira (AMB)",
+    "sbp": "Sociedade Brasileira de Pediatria (SBP)",
+    "butantan": "Instituto Butantan",
+    "inca": "Instituto Nacional de Câncer (INCA)",
+    "fda": "U.S. Food and Drug Administration (FDA)",
+    "cdc": "Centers for Disease Control and Prevention (CDC)",
+    "scielo": "SciELO Brasil",
 }
 
 TIER1_HOST_SUFFIXES = (
     ".gov.br", ".leg.br", ".jus.br", ".mil.br",
     "gov.br", "senado.leg.br", "camara.leg.br", "tse.jus.br", "stf.jus.br", "planalto.gov.br",
     "anvisa.gov.br", "fiocruz.br", "ibge.gov.br", "ipea.gov.br", "saude.gov.br",
+    "endocrino.org.br", "diabetes.org.br", "sbim.org.br", "cfm.org.br", "portal.cfm.org.br",
+    "cardiol.br", "portal.cardiol.br", "amb.org.br", "sbp.com.br", "butantan.gov.br", "inca.gov.br",
     "aosfatos.org", "lupa.news", "boatos.org", "projetocomprova.com.br",
-    "who.int", "paho.org", "cdc.gov",
+    "who.int", "paho.org", "cdc.gov", "fda.gov", "ema.europa.eu", "scielo.br", "bvsalud.org",
     "clinicaltrials.gov", "europepmc.org", "ncbi.nlm.nih.gov",
 )
 
@@ -108,10 +123,15 @@ TIER1_SOURCE_NAMES = {
     "projeto comprova", "comprova", "afp checamos", "checamos",
     "fato ou fake", "estadao verifica", "estadão verifica", "uol confere", "confere",
     "ministério da saúde", "anvisa", "fiocruz", "ibge", "ipea",
+    "sbem", "sbd", "sbim", "cfm", "conselho federal de medicina",
+    "sociedade brasileira de endocrinologia e metabologia", "sociedade brasileira de diabetes",
+    "sociedade brasileira de imunizações", "sociedade brasileira de cardiologia", "sbc",
+    "amb", "sbp", "instituto butantan", "butantan", "inca", "instituto nacional de câncer",
     "tribunal superior eleitoral", "tse", "supremo tribunal federal", "stf",
-    "organização mundial da saúde", "oms", "who", "opas",
+    "organização mundial da saúde", "oms", "who", "opas", "fda", "cdc", "ema",
     "clinicaltrials.gov", "clinicaltrials", "europe pmc", "pubmed",
     "anvisa medicamentos", "base local anvisa", "anvisa (dados abertos oficiais)",
+    "saúde com ciência",
 }
 
 TIER2_SOURCE_NAMES = {
@@ -147,7 +167,10 @@ DEBUNK_TITLE_PATTERNS = re.compile(
     r"boato|fake news|falso|falsa|engana|enganosa|distorce|distorcida|"
     r"não causou|não causa|não causam|não mata|não matam|"
     r"não t[eê]m? relação|não há relação|não provocam?|"
-    r"golpe do|golpe da|é golpe|trata-se de golpe|caiu no golpe|alerta de golpe|falso que"
+    r"golpe do|golpe da|é golpe|trata-se de golpe|caiu no golpe|alerta de golpe|falso que|"
+    r"proibido|proibida|proíbe|proibiu|irregular|irregulares|clandestino|clandestina|"
+    r"sem registro|sem comprovação|não tem comprovação|venda irregular|sem licença|sem eficácia|"
+    r"alerta da anvisa|alerta sanitário|interdita|interditou|apreende|apreendeu"
     r")\b",
     re.IGNORECASE,
 )
@@ -155,17 +178,14 @@ DEBUNK_TITLE_PATTERNS = re.compile(
 CONFIRM_TITLE_PATTERNS = re.compile(
     r"\b(?:"
     r"confirma|confirmou|aprova|aprovou|autoriza|autorizou|determina|determinou|"
-    r"proíbe|proibiu|suspende|suspendeu|recolhe|recolhimento|anuncia|anunciou|"
-    r"sanciona|sancionou|publica|publicou|pode ser utilizad[oa]|passa a valer|"
+    r"anuncia|anunciou|sanciona|sancionou|publica|publicou|pode ser utilizad[oa]|passa a valer|"
     r"passam a valer|servirá como|valerá como|é verdade|é fato|comprova|comprovou|"
     r"lamenta|lamentou|lamento|pesar|nota de pesar|pesar pelo falecimento|"
     r"morre|morreu|morte|falecimento|falece|faleceu|"
     r"emite nota|emitiu nota|manifesta|manifestou|divulga|divulgou|informa|informou|"
-    r"alerta|alertou|comunica|comunicou|declara|declarou|registra|registrou|"
-    r"lança|lançou|inicia|iniciou|atinge|atingiu|assina|assinou|decreta|decretou|"
+    r"declara|declarou|lança|lançou|inicia|iniciou|atinge|atingiu|assina|assinou|decreta|decretou|"
     r"entrega|entregou|recomenda|recomendou|presta homenagem|homenageia|homenageou|"
-    r"interdita|interditou|autua|autuou|apreende|apreendeu|reconhece|reconheceu|"
-    r"concede|concedeu|destaca|destacou|reforça|reforçou"
+    r"reconhece|reconheceu|concede|concedeu|destaca|destacou|reforça|reforçou"
     r")\b",
     re.IGNORECASE,
 )
@@ -261,47 +281,81 @@ def extract_substantive_tokens(text: str) -> list[str]:
     return [t for t in raw_tokens if t not in STOP_WORDS_PT]
 
 
+def extract_salient_entities(text: str) -> list[str]:
+    """Identifica dinamicamente entidades e termos substantivos proeminentes sem listas estáticas/hardcoded."""
+    # 1. Identifica nomes próprios ou termos com inicial maiúscula (ex: 'Mounjaro', 'Anvisa', 'Ozempic')
+    proper_nouns = [
+        w.lower() for w in re.findall(r"\b[A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ0-9\-]{2,}\b", text)
+        if w.lower() not in STOP_WORDS_PT
+    ]
+    # 2. Extrai tokens substantivos filtrados de ruído genérico
+    substantive = extract_substantive_tokens(text)
+    noise_words = {
+        "venda", "vendas", "vender", "reais", "preco", "preço", "precos", "preços",
+        "comprar", "compra", "barato", "caro", "gratis", "grátis", "dia", "dias",
+        "mes", "meses", "ano", "anos", "vez", "vezes", "coisa", "coisas", "forma",
+    }
+    salient = [t for t in substantive if t not in noise_words and len(t) >= 4]
+
+    # Combina mantendo ordem de relevância
+    ordered = list(dict.fromkeys(proper_nouns + salient))
+    return ordered
+
+
 def build_search_queries(claim: str, original_text: str | None = None) -> list[str]:
     """
     Gera consultas multi-termo inteligentes para maximizar a revocação nas APIs de checagem:
-    1. Frase integral limpa
-    2. Frase original do usuário (se fornecida e diferente)
-    3. Palavras-chave substantivas essenciais (sem stop words)
-    4. Bigramas/combinações principais de substantivos
+    1. Entidades salientes prioritárias (ex: 'mounjaro', 'tirzepatida', 'adesivo emagrecedor')
+    2. Pares semânticos entidade + tópico (ex: 'mounjaro diabetes', 'mounjaro adesivo')
+    3. Bigramas substantivos essenciais
+    4. Frase concisa limpa
     """
     queries: list[str] = []
     clean_c = clean_reviewed_claim(claim)
     base_q = clean_c if clean_c else claim.strip()
-    if base_q:
+
+    # 1. Entidades salientes prioritárias
+    entities = extract_salient_entities(base_q)
+    if original_text:
+        entities = list(dict.fromkeys(entities + extract_salient_entities(original_text)))
+    for ent in entities:
+        if ent not in queries:
+            queries.append(ent)
+
+    # 2. Combinações de entidade + tokens substantivos
+    tokens = extract_substantive_tokens(base_q)
+    noise_words = {"venda", "vendas", "vender", "reais", "preco", "preço", "comprar", "dia", "anos", "teste", "valor"}
+    salient_tokens = [t for t in tokens if t not in noise_words and len(t) >= 4]
+
+    for ent in entities:
+        for t in salient_tokens:
+            if t not in ent and len(t) >= 4:
+                comb = f"{ent} {t}"
+                if comb not in queries:
+                    queries.append(comb)
+
+    # 3. Bigramas substantivos
+    if len(salient_tokens) >= 2:
+        pair1 = f"{salient_tokens[0]} {salient_tokens[1]}"
+        if pair1 not in queries:
+            queries.append(pair1)
+    if len(salient_tokens) >= 3:
+        pair2 = f"{salient_tokens[1]} {salient_tokens[2]}"
+        if pair2 not in queries:
+            queries.append(pair2)
+
+    # 4. Frase concisa limpa (se curta)
+    if base_q and len(base_q.split()) <= 7 and base_q not in queries:
         queries.append(base_q)
 
+    # 5. Frase original se fornecida e concisa
     if original_text and original_text.strip():
         clean_orig = clean_reviewed_claim(original_text).strip()
-        if clean_orig and clean_orig.lower() != base_q.lower() and clean_orig not in queries:
+        if clean_orig and len(clean_orig.split()) <= 7 and clean_orig not in queries:
             queries.append(clean_orig)
 
-    tokens = extract_substantive_tokens(base_q)
-    if tokens:
-        keyword_query = " ".join(tokens)
-        if keyword_query not in queries:
-            queries.append(keyword_query)
-
-        # Se houver 2 ou mais termos substantivos, gera pares-chave (ex: "água limão", "limão emagrece")
-        if len(tokens) >= 2:
-            pair1 = f"{tokens[0]} {tokens[1]}"
-            if pair1 not in queries:
-                queries.append(pair1)
-        if len(tokens) >= 3:
-            pair2 = f"{tokens[1]} {tokens[2]}"
-            if pair2 not in queries:
-                queries.append(pair2)
-
-    if original_text and original_text.strip():
-        orig_tokens = extract_substantive_tokens(original_text)
-        if orig_tokens and len(orig_tokens) >= 2:
-            orig_kw = " ".join(orig_tokens)
-            if orig_kw not in queries:
-                queries.append(orig_kw)
+    if not queries and base_q:
+        queries.append(base_q)
 
     return list(dict.fromkeys(queries))
 
@@ -437,9 +491,11 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                 logger.debug("Erro na chamada à Google Fact Check API (%s): %s", q, e)
             return []
 
-        tasks = [_query_api(term, lang="pt-BR") for term in search_terms[:3]]
-        if len(search_terms) >= 2:
-            tasks.append(_query_api(search_terms[1], lang=None))
+        # Prioriza queries concisas de entidades e termos salientes para máxima revocação na API do Google
+        candidate_terms = sorted(search_terms, key=lambda t: len(t.split()))
+        tasks = [_query_api(term, lang="pt-BR") for term in candidate_terms[:4]]
+        if candidate_terms:
+            tasks.append(_query_api(candidate_terms[0], lang=None))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r_list in results:
@@ -478,22 +534,46 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
 
     async def search_lateral_reading(self, query: str, original_text: str | None = None) -> list[EvidenceItem]:
         """
-        Executa Leitura Horizontal em fontes confiáveis (G1, Folha, Estadão, BBC, WHO, Fiocruz, Anvisa, IBGE, Ipea)
-        utilizando busca agregada para obter matérias de apuração e dados oficiais em tempo real.
+        Executa Leitura Horizontal ampliada em fontes de referência e autoridades de saúde
+        (G1, Folha, Estadão, BBC, Anvisa, Ministério da Saúde, Fiocruz, SBEM, SBD, CFM, Boatos.org, Lupa, Aos Fatos)
+        utilizando busca agregada em tempo real com termos específicos de desmentido e apuração regulatória.
         """
         search_terms = build_search_queries(query, original_text=original_text)
-        tasks = []
-        for term in search_terms[:2]:
-            clean_q = re.sub(r"[\"']", "", term)
-            encoded_query = urllib.parse.quote(clean_q[:160])
-            rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
-            tasks.append(self._fetch_rss(rss_url, max_items=8))
+        entities = extract_salient_entities(query)
+        if original_text:
+            entities = list(dict.fromkeys(entities + extract_salient_entities(original_text)))
 
-        # Busca estatística se houver termos econômicos/demográficos
-        primary_term = search_terms[0] if search_terms else query
+        # Define o núcleo temático para a busca lateral
+        primary_entity = entities[0] if entities else ""
+        candidate_terms = [t for t in search_terms if len(t.split()) <= 4]
+        primary_term = candidate_terms[0] if candidate_terms else (search_terms[0] if search_terms else query)
+        core_query = primary_entity or primary_term
+
+        tasks = []
+        # 1. Consulta geral concisa com os principais termos-chave
+        for term in candidate_terms[:2]:
+            clean_q = re.sub(r"[\"']", "", term)
+            encoded_query = urllib.parse.quote(clean_q[:120])
+            rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+            tasks.append(self._fetch_rss(rss_url, max_items=6))
+
+        # 2. Consulta focada em checagens, desmentidos e fraudes em saúde
+        debunk_query = f"{core_query} (falso OR fake OR boato OR golpe OR desmente OR alerta OR perigo OR irregular OR proibido OR 'fato ou fake' OR 'uol confere')"
+        debunk_rss = f"https://news.google.com/rss/search?q={urllib.parse.quote(debunk_query)}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+        tasks.append(self._fetch_rss(debunk_rss, max_items=8))
+
+        # 3. Consulta direcionada a autoridades sanitárias, sociedades médicas e agências de checagem
+        authority_query = (
+            f"{core_query} (site:anvisa.gov.br OR site:saude.gov.br OR site:fiocruz.br OR site:endocrino.org.br "
+            f"OR site:diabetes.org.br OR site:cfm.org.br OR site:boatos.org OR site:aosfatos.org OR site:lupa.news)"
+        )
+        authority_rss = f"https://news.google.com/rss/search?q={urllib.parse.quote(authority_query)}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+        tasks.append(self._fetch_rss(authority_rss, max_items=8, force_official=True))
+
+        # 4. Busca estatística se houver termos econômicos/demográficos
         is_stat = bool(
             re.search(
-                r"\b(?:pib|inflação|ipca|desemprego|saúde|educação|gastos?|orçamento|taxa|censo|população|salário)\b",
+                r"\b(?:pib|inflação|ipca|desemprego|educação|gastos?|orçamento|taxa|censo|população|salário)\b",
                 primary_term,
                 re.IGNORECASE,
             )
@@ -543,21 +623,56 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                     desc_clean = re.sub(r"\s+", " ", desc_clean).strip()
                     snippet = desc_clean if desc_clean else title
 
-                    if force_official:
-                        if "ibge.gov.br" in link.lower() or "ibge" in source_name.lower():
-                            source_name = "IBGE (Dados Oficiais)"
-                        elif "ipea.gov.br" in link.lower() or "ipea" in source_name.lower():
-                            source_name = "Ipea (Dados Oficiais)"
+                    link_lower = link.lower()
+                    source_lower = source_name.lower()
+                    is_specialized_fact_check = False
+
+                    if "endocrino.org.br" in link_lower or "sbem" in source_lower:
+                        source_name = "SBEM (Sociedade Brasileira de Endocrinologia e Metabologia)"
+                        is_specialized_fact_check = True
+                    elif "diabetes.org.br" in link_lower or "sbd" in source_lower:
+                        source_name = "SBD (Sociedade Brasileira de Diabetes)"
+                        is_specialized_fact_check = True
+                    elif "cfm.org.br" in link_lower:
+                        source_name = "CFM (Conselho Federal de Medicina)"
+                        is_specialized_fact_check = True
+                    elif "anvisa.gov.br" in link_lower or "anvisa" in source_lower:
+                        source_name = "Anvisa (Portal Oficial)"
+                        is_specialized_fact_check = True
+                    elif "saude.gov.br" in link_lower:
+                        source_name = "Ministério da Saúde"
+                        is_specialized_fact_check = True
+                    elif "fiocruz.br" in link_lower:
+                        source_name = "Fiocruz"
+                        is_specialized_fact_check = True
+                    elif "boatos.org" in link_lower or "boatos" in source_lower:
+                        source_name = "Boatos.org"
+                        is_specialized_fact_check = True
+                    elif "lupa.news" in link_lower or "lupa" in source_lower:
+                        source_name = "Agência Lupa"
+                        is_specialized_fact_check = True
+                    elif "aosfatos.org" in link_lower or "aos fatos" in source_lower:
+                        source_name = "Aos Fatos"
+                        is_specialized_fact_check = True
+                    elif "ibge.gov.br" in link_lower or "ibge" in source_lower:
+                        source_name = "IBGE (Dados Oficiais)"
+                        is_specialized_fact_check = True
+                    elif "ipea.gov.br" in link_lower or "ipea" in source_lower:
+                        source_name = "Ipea (Dados Oficiais)"
+                        is_specialized_fact_check = True
 
                     is_fact_check = (
-                        any(fc in title.lower() for fc in ("fato ou fake", "verifica", "confere", "comprova", "checagem"))
-                        or any(fc in source_name.lower() for fc in ("lupa", "aos fatos", "boatos"))
+                        is_specialized_fact_check
+                        or any(fc in title.lower() for fc in ("fato ou fake", "verifica", "confere", "comprova", "checagem"))
+                        or any(fc in source_name.lower() for fc in ("lupa", "aos fatos", "boatos", "afp checamos"))
                     )
                     tier = get_source_tier(source_name, link, is_fact_check)
 
                     rating = None
-                    if is_fact_check and DEBUNK_TITLE_PATTERNS.search(title):
+                    stance = "NEUTRAL"
+                    if DEBUNK_TITLE_PATTERNS.search(title):
                         rating = "Desmentido"
+                        stance = "REFUTES"
 
                     evidences.append(
                         EvidenceItem(
@@ -569,6 +684,7 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                             is_fact_check=is_fact_check,
                             published_date=pub_date,
                             source_tier=tier.value,
+                            stance=stance,
                         )
                     )
         except Exception as e:
@@ -847,7 +963,7 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
 
         for ev in evidences:
             ev_text = f"{ev.title} {ev.snippet} {ev.claim_reviewed or ''}"
-            if ev.source_name.startswith("Anvisa") or ev.source_name.startswith("ClinicalTrials") or "PubMed" in ev.source_name or "Europe PMC" in ev.source_name:
+            if ev.source_name.startswith("ClinicalTrials") or "PubMed" in ev.source_name or "Europe PMC" in ev.source_name:
                 is_relevant = True
             else:
                 is_relevant = check_evidence_relevance(claim, ev_text, original_text=original_text)
@@ -877,7 +993,6 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                     k in r_lower
                     for k in (
                         "verdadeiro", "fato", "verdade", "correto", "comprovado",
-                        "ativo", "aprovado", "válido", "valido",
                     )
                 )
                 is_misleading = any(k in r_lower for k in ("enganoso", "distorcido", "fora de contexto", "impreciso", "exagerado"))
@@ -1101,8 +1216,9 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
         # Camada 0 (contexto geral): Consulta à base vetorial se não houver match direto
         vector_evidences = self.inspect_vector_kb(clean_text)
 
-        # Camada 1: Consulta local e instantânea à base oficial ANVISA (se disponível)
-        local_evidences = self.inspect_local_health_kb(clean_text)
+        # Camada 1: Registros locais da Anvisa contêm apenas dados cadastrais básicos de medicamentos,
+        # não devendo ser utilizados como evidência de veracidade de alegações de saúde para evitar falsos positivos.
+        local_evidences: list[EvidenceItem] = []
 
         # Camada 2: Varredura concorrente em fontes externas (checagens, imprensa de referência e repositórios biomédicos)
         fc_task = self.search_google_fact_check(clean_text, original_text=original_text)
