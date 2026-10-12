@@ -9,6 +9,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from app.config import Settings, get_settings
+from app.services.onnx_classifier import OnnxTopicClassifier, get_onnx_classifier
 from app.services.plumb_classifier import PlumbTopicClassifier, get_plumb_classifier
 from app.services.laya_classifier import LayaTopicClassifier, get_laya_classifier
 
@@ -211,6 +212,8 @@ class HealthTopicGatekeeper:
         self,
         http_client: httpx.AsyncClient | None = None,
         settings: Settings | None = None,
+        topic_classifier: Any = None,
+        onnx_classifier: Any = None,
         plumb_classifier: Any = None,
         laya_classifier: Any = None,
     ) -> None:
@@ -220,17 +223,23 @@ class HealthTopicGatekeeper:
             timeout=10.0,
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
         )
-        classifier_inst = plumb_classifier or laya_classifier
+        classifier_inst = topic_classifier or onnx_classifier or plumb_classifier or laya_classifier
         if classifier_inst is not None:
-            self.plumb_classifier = classifier_inst
-        elif getattr(self.settings, "PLUMB_ENABLED", True) or getattr(self.settings, "LAYA_ENABLED", False):
-            self.plumb_classifier = PlumbTopicClassifier(
+            self.topic_classifier = classifier_inst
+        elif getattr(self.settings, "ONNX_GATEKEEPER_ENABLED", True):
+            self.topic_classifier = get_onnx_classifier(
+                model_dir=getattr(self.settings, "ONNX_MODEL_DIR", "models")
+            )
+        elif getattr(self.settings, "PLUMB_ENABLED", False) or getattr(self.settings, "LAYA_ENABLED", False):
+            self.topic_classifier = PlumbTopicClassifier(
                 model_name=getattr(self.settings, "PLUMB_MODEL_NAME", "crh225/plumb-4b"),
                 device=getattr(self.settings, "PLUMB_DEVICE", "mps"),
             )
         else:
-            self.plumb_classifier = None
-        self.laya_classifier = self.plumb_classifier
+            self.topic_classifier = None
+
+        self.plumb_classifier = self.topic_classifier
+        self.laya_classifier = self.topic_classifier
 
     async def aclose(self) -> None:
         if self._owned_client:
@@ -328,8 +337,8 @@ class HealthTopicGatekeeper:
         if biomedical_regex_matches:
             matched_biomedical.extend(biomedical_regex_matches)
 
-        # 1. Classificação Temática via Plumb-4B (se ativo)
-        classifier = getattr(self, "plumb_classifier", None) or getattr(self, "laya_classifier", None)
+        # 1. Classificação Temática via ONNX INT8 / Plumb (se ativo)
+        classifier = getattr(self, "topic_classifier", None) or getattr(self, "plumb_classifier", None) or getattr(self, "laya_classifier", None)
         if classifier is not None:
             plumb_result = await classifier.classify_async(text)
             if plumb_result is not None:

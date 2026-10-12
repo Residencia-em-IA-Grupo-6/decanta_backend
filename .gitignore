@@ -23,3 +23,5 @@ app/data/*.csv
 app/data/chroma_db/*
 !app/data/chroma_db/.gitkeep
 *.ses
+models/*.onnx
+models/*.tar.gz

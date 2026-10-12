@@ -26,13 +26,17 @@ class Settings(BaseSettings):
     # Modo exclusivo de saúde (rejeita temas não relacionados e polêmicas políticas sobre saúde)
     HEALTH_ONLY_MODE: bool = True
 
-    # Classificação temática via Plumb-4B (Decision-Making via JevK5)
-    PLUMB_ENABLED: bool = True
+    # Classificador Temático e Gatekeeper de Saúde de alta performance (ONNX INT8, ~20ms)
+    ONNX_GATEKEEPER_ENABLED: bool = True
+    ONNX_MODEL_DIR: str = "models"
+
+    # Classificação temática legada via Plumb-4B (Decision-Making via JevK5)
+    PLUMB_ENABLED: bool = False
     PLUMB_MODEL_NAME: str = "crh225/plumb-4b"
     PLUMB_DEVICE: str = "mps"
 
     # Retrocompatibilidade com configurações legadas
-    LAYA_ENABLED: bool = True
+    LAYA_ENABLED: bool = False
     LAYA_MODEL_NAME: str = "crh225/plumb-4b"
     # Configuração de Provedores de LLM (Ollama Local ou OpenAI)
     # Padrão: "ollama" com "qwen3.5:9b" para execução local gratuita

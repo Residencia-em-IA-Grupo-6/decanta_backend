@@ -155,12 +155,29 @@ class PlumbTopicClassifier:
         Classifica sincronamente o texto em um dos domínios temáticos.
         Retorna PlumbTopicResult ou None se o modelo estiver indisponível.
         """
-        agent = self._ensure_loaded()
-        if agent is None:
-            return None
-
         clean_text = text.strip()
         if not clean_text:
+            return None
+
+        agent = self._ensure_loaded()
+        if agent is None:
+            # Fallback de alta performance via classificador ONNX INT8
+            try:
+                from app.services.onnx_classifier import get_onnx_classifier
+
+                onnx_clf = get_onnx_classifier()
+                onnx_res = onnx_clf.classify(clean_text)
+                if onnx_res is not None:
+                    return PlumbTopicResult(
+                        topic=onnx_res.topic,
+                        raw_topic=onnx_res.raw_topic,
+                        confidence=onnx_res.confidence,
+                        probabilities=onnx_res.probabilities,
+                        is_health=onnx_res.is_health,
+                        health_probability=onnx_res.health_probability,
+                    )
+            except Exception as e:
+                logger.debug("Fallback ONNX no PlumbTopicClassifier falhou: %s", e)
             return None
 
         truncated_text = clean_text[:2000]
