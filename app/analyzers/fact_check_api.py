@@ -12,17 +12,9 @@ import httpx
 from app.config import get_settings
 from app.core.base import BaseAnalyzer
 from app.core.registry import register_analyzer
-from app.schemas.analysis import AnalyzerResult, Verdict
+from app.schemas.analysis import AnalyzerResult, EvidenceItem, SourceTier, Verdict
 
 logger = logging.getLogger("factchkbr.analyzers.fact_check_api")
-
-
-class SourceTier(str, Enum):
-    """Níveis de credibilidade e autoridade das fontes de evidência."""
-    TIER1_OFFICIAL_OR_IFCN = "tier1_official_or_ifcn"
-    TIER2_MAINSTREAM_MEDIA = "tier2_mainstream_media"
-    TIER3_GENERAL_MEDIA = "tier3_general_media"
-    UNKNOWN = "unknown"
 
 
 TIER_WEIGHTS = {
@@ -32,20 +24,6 @@ TIER_WEIGHTS = {
     SourceTier.UNKNOWN.value: 0.0,
 }
 
-
-class EvidenceItem(BaseModel):
-    """Evidência factual recuperada via Fact Check Tools ou Leitura Horizontal."""
-    title: str = Field(..., description="Título da matéria, comunicado ou desmentido")
-    source_name: str = Field(..., description="Nome do veículo de imprensa ou autoridade (ex: G1, Lupa, WHO, Anvisa)")
-    url: str = Field(..., description="Link da evidência")
-    snippet: str = Field(default="", description="Trecho ou resumo descritivo")
-    rating: str | None = Field(default=None, description="Classificação do checador (ex: Falso, Enganoso, Verdadeiro)")
-    is_fact_check: bool = Field(default=False, description="Indica se é de agência de checagem oficial")
-    published_date: str | None = Field(default=None, description="Data de publicação")
-    claim_reviewed: str | None = Field(default=None, description="Alegação original revisada pelo checador")
-    source_tier: str = Field(default=SourceTier.TIER2_MAINSTREAM_MEDIA.value, description="Nível de credibilidade da fonte")
-    is_relevant: bool = Field(default=True, description="Indica se o conteúdo tem relação temática direta com a alegação")
-    stance: str = Field(default="NEUTRAL", description="Posicionamento da evidência: SUPPORTS | REFUTES | NEUTRAL")
 
 
 # Veículos de imprensa e instituições de autoridade reconhecidos para leitura horizontal
@@ -222,6 +200,9 @@ COMMON_VERBS_AND_FILLER = {
     "seca", "secar", "secam", "secou", "elimina", "eliminam", "eliminar",
     "perde", "perdem", "perder", "emagrece", "emagrecem", "emagrecer",
     "vende", "vender", "vendem", "vendeu", "compra", "comprar", "compram",
+    "beber", "bebe", "bebem", "bebeu", "tomar", "toma", "tomam", "tomou",
+    "comer", "come", "comem", "comeu", "ingerir", "ingere", "ingerem", "ingeriu",
+    "usar", "usa", "usam", "usou", "utilizar", "utiliza", "utilizam",
     # Mídia, redes sociais e formatos
     "foto", "fotos", "video", "vídeo", "videos", "vídeos", "imagem", "imagens",
     "link", "links", "post", "posts", "audio", "áudio", "print", "prints",
@@ -496,7 +477,7 @@ def build_search_queries(claim: str, original_text: str | None = None) -> list[s
                 if comb not in queries:
                     queries.append(comb)
 
-        # Bigrama substantivo inicial se existir
+        # Bigramas substantivos essenciais
         if len(salient_tokens) >= 2:
             pair1 = f"{salient_tokens[0]} {salient_tokens[1]}"
             if pair1 not in queries:
@@ -562,7 +543,7 @@ def check_evidence_relevance(claim: str, evidence_text: str, original_text: str 
 
     claim_tokens = [
         t for t in extract_substantive_tokens(target_text)
-        if t not in COMMON_VERBS_AND_FILLER and len(t) >= 4
+        if t not in COMMON_VERBS_AND_FILLER and len(t) >= 3
     ]
 
     # Se a sub-claim for muito curta (< 2 tokens) e houver original_text, enriquece com tokens do original
@@ -570,7 +551,7 @@ def check_evidence_relevance(claim: str, evidence_text: str, original_text: str 
         clean_o = clean_reviewed_claim(original_text)
         orig_tokens = [
             t for t in extract_substantive_tokens(clean_o)
-            if t not in COMMON_VERBS_AND_FILLER and len(t) >= 4
+            if t not in COMMON_VERBS_AND_FILLER and len(t) >= 3
         ]
         claim_tokens = list(dict.fromkeys(claim_tokens + orig_tokens))
 
@@ -988,8 +969,8 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                     if clean_reasons:
                         snippet += f" Motivos: {' | '.join(clean_reasons)}"
 
-                real_source = m.sources[0] if (m.sources and not m.sources[0].startswith("vector:") and not "chroma" in m.sources[0].lower()) else "Checagem de Referência Anterior"
-                first_url = m.sources[0] if (m.sources and m.sources[0].startswith("http")) else "https://fatooufake.globo.com"
+                real_source = m.sources[0] if (m.sources and not m.sources[0].startswith("vector:") and "chroma" not in m.sources[0].lower() and "base vetorial" not in m.sources[0].lower()) else "Checagem Oficial Anterior"
+                first_url = m.sources[0] if (m.sources and m.sources[0].startswith("http") and not is_homepage_url(m.sources[0])) else ""
 
                 evidences.append(
                     EvidenceItem(
@@ -1023,14 +1004,22 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             if not settings.VECTOR_SEARCH_ENABLED or kb.count() == 0:
                 return None
 
-            threshold = getattr(settings, "VECTOR_SEARCH_BYPASS_THRESHOLD", 0.80)
+            threshold = getattr(settings, "VECTOR_SEARCH_BYPASS_THRESHOLD", 0.85)
             matches = kb.search_claims(
                 query=query,
                 limit=1,
                 min_similarity=threshold,
             )
             if matches and (matches[0].similarity or 0.0) >= threshold:
-                return matches[0]
+                item = matches[0]
+                from app.services.factcheck_corpus import is_homepage_url
+                valid_sources = [
+                    s for s in (item.sources or [])
+                    if s and "http" in s and not is_homepage_url(s)
+                    and not any(ign in s.lower() for ign in ("base vetorial", "chromadb", "nenhuma", "ausência"))
+                ]
+                if valid_sources:
+                    return item
         except Exception as e:
             logger.debug("Falha ao verificar cache de alegação no ChromaDB: %s", e)
 
@@ -1140,7 +1129,7 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                         EvidenceItem(
                             title=f"Ensaio Clínico [{overall_status}]: {brief_title}",
                             source_name="ClinicalTrials.gov (NIH/Registro Oficial)",
-                            url=f"https://clinicaltrials.gov/study/{nct_id}" if nct_id else "https://clinicaltrials.gov",
+                            url=f"https://clinicaltrials.gov/study/{nct_id}" if nct_id else "",
                             snippet=f"Status: {overall_status}. {brief_summary[:280]}",
                             rating=rating,
                             is_fact_check=False,
@@ -1361,7 +1350,7 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
                     journal = r.get("journalTitle") or "Literatura Biomédica (PubMed/PMC)"
                     ext_id = r.get("id", "")
                     abstract = r.get("abstractText", "")
-                    article_url = f"https://europepmc.org/article/{r.get('source', 'MED')}/{ext_id}" if ext_id else "https://europepmc.org"
+                    article_url = f"https://europepmc.org/article/{r.get('source', 'MED')}/{ext_id}" if ext_id else ""
                     evidences.append(
                         EvidenceItem(
                             title=f"Estudo Científico ({journal}): {title}",
@@ -1696,9 +1685,13 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
             if cached_claim.reasons:
                 snippet += f" Motivos: {' | '.join(cached_claim.reasons[:2])}"
 
+            cached_source_name = "Checagem Oficial de Referência"
+            if cached_claim.sources and not cached_claim.sources[0].startswith("vector:") and "chroma" not in cached_claim.sources[0].lower():
+                cached_source_name = cached_claim.sources[0].split(":")[0].strip()
+
             cached_ev = EvidenceItem(
-                title=f"Base Vetorial [{cached_claim.verdict.value}]: {cached_claim.statement}",
-                source_name="Base Vetorial FactChkBR (ChromaDB)",
+                title=f"Checagem Anterior [{cached_claim.verdict.value}]: {cached_claim.statement}",
+                source_name=cached_source_name,
                 url=first_source,
                 snippet=snippet[:320],
                 rating=cached_claim.verdict.value,
@@ -1763,25 +1756,30 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
         # não devendo ser utilizados como evidência de veracidade de alegações de saúde para evitar falsos positivos.
         local_evidences: list[EvidenceItem] = []
 
-        # Camada 2: Varredura concorrente em fontes externas (checagens, imprensa de referência, Wikipedia e PubMed)
+        # Camada 2: Varredura concorrente em fontes externas (acervo de checagens com links diretos, Google Fact Check, Leitura Horizontal, Wikipedia e PubMed)
         fc_task = self.search_google_fact_check(clean_text, original_text=original_text)
         lat_task = self.search_lateral_reading(clean_text, original_text=original_text)
         wiki_task = self.search_pharmacological_wikipedia(clean_text, original_text=original_text)
         pubmed_task = self.search_pubmed_literature(clean_text, original_text=original_text)
         ct_task = self.search_clinical_trials(clean_text)
 
-        results = await asyncio.gather(fc_task, lat_task, wiki_task, pubmed_task, ct_task, return_exceptions=True)
-        google_evidences = results[0] if isinstance(results[0], list) else []
-        lateral_evidences = results[1] if isinstance(results[1], list) else []
-        wiki_evidences = results[2] if isinstance(results[2], list) else []
-        pubmed_evidences = results[3] if isinstance(results[3], list) else []
-        ct_evidences = results[4] if isinstance(results[4], list) else []
+        from app.services.factcheck_corpus import get_factcheck_corpus, is_homepage_url
+        corpus_task = asyncio.to_thread(get_factcheck_corpus().search, clean_text, original_text=original_text, limit=4)
+
+        results = await asyncio.gather(corpus_task, fc_task, lat_task, wiki_task, pubmed_task, ct_task, return_exceptions=True)
+        corpus_evidences = results[0] if isinstance(results[0], list) else []
+        google_evidences = results[1] if isinstance(results[1], list) else []
+        lateral_evidences = results[2] if isinstance(results[2], list) else []
+        wiki_evidences = results[3] if isinstance(results[3], list) else []
+        pubmed_evidences = results[4] if isinstance(results[4], list) else []
+        ct_evidences = results[5] if isinstance(results[5], list) else []
 
         raw_candidates = (
             (extra_evidences or [])
+            + corpus_evidences
+            + google_evidences
             + vector_evidences
             + local_evidences
-            + google_evidences
             + lateral_evidences
             + wiki_evidences
             + pubmed_evidences
@@ -1821,10 +1819,16 @@ class FactCheckApiAnalyzer(BaseAnalyzer):
 
         sources = []
         if all_evidences:
-            for e in all_evidences[:4]:
-                sources.append(f"{e.source_name}: {e.title}")
-        else:
-            sources.append("Nenhuma checagem prévia ou fonte oficial encontrada para esta alegação específica (ausência de respaldo fático)")
+            for e in all_evidences:
+                if e.url and e.url.startswith("http") and not is_homepage_url(e.url):
+                    src_entry = f"{e.source_name}: {e.title} - {e.url}"
+                    if src_entry not in sources:
+                        sources.append(src_entry)
+                if len(sources) >= 4:
+                    break
+
+        if not sources:
+            sources.append("Consulta a acervos científicos e bases de checagem (nenhum artigo específico encontrado para esta afirmação)")
 
         if verdict == Verdict.FAKE:
             if reasons and any("não encontrada" in r.lower() for r in reasons):

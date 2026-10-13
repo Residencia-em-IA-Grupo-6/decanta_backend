@@ -57,9 +57,11 @@ def test_telegram_format_analysis_html():
     assert "Pontos analisados:" in formatted
     assert "O que você precisa saber:" in formatted
     assert "Fontes consultadas" in formatted
-    # Todas as fontes devem ter links HTML clicáveis
+    # Fontes com links reais devem ter tags <a> com href direto
     assert '<a href="https://saude.abril.com.br/nutricao/agua-com-limao-emagrece">' in formatted
-    assert '<a href="https://consultas.anvisa.gov.br/#/medicamentos/q/">' in formatted
+    # NUNCA deve inventar links para páginas iniciais genéricas
+    assert 'href="https://consultas.anvisa.gov.br/' not in formatted
+    assert 'href="https://g1.globo.com/fato-ou-fake/"' not in formatted
     # Não deve conter termos em inglês ou jargões
     assert "FAKE / BOATO" not in formatted
     assert "Plumb-4B" not in formatted
@@ -263,11 +265,26 @@ def test_analyze_endpoint_returns_telegram_formatted_text():
 
 
 def test_telegram_sources_always_have_clickable_links():
-    """Garante que todas as fontes exibidas na mensagem possuam link clicável HTML."""
+    """Garante que artigos com links diretos gerem links clicáveis HTML e que fontes genéricas não gerem homepages falsas."""
     service = TelegramService()
 
-    # Caso com fontes genéricas sem link no original
-    analysis = AnalyzeResponse(
+    # 1. Caso com matéria real e link direto
+    analysis_with_links = AnalyzeResponse(
+        claim="Sal grosso moído cura hipertensão",
+        verdict=Verdict.FAKE,
+        confidence=0.96,
+        summary="A alegação é falsa segundo checagens especializadas.",
+        reasons=["Desmentido por checadores."],
+        sources=[
+            "Boatos.org: Sal grosso com água não baixa pressão - https://www.boatos.org/saude/sal-grosso-moido-com-agua-ajuda-a-baixar-pressao-arterial.html"
+        ],
+    )
+    formatted_with_links = service.format_analysis_for_telegram(analysis_with_links)
+    assert "Fontes consultadas (clique no link para acessar o artigo):" in formatted_with_links
+    assert '<a href="https://www.boatos.org/saude/sal-grosso-moido-com-agua-ajuda-a-baixar-pressao-arterial.html">' in formatted_with_links
+
+    # 2. Caso sem artigos com link direto (apenas menções genéricas): NUNCA deve gerar links para homepages
+    analysis_no_links = AnalyzeResponse(
         claim="Chá de folhas de louro cura artrose",
         verdict=Verdict.FAKE,
         confidence=0.88,
@@ -275,10 +292,8 @@ def test_telegram_sources_always_have_clickable_links():
         reasons=["Não há evidências de cura."],
         sources=["Anvisa", "Ministério da Saúde", "Organização Mundial da Saúde"],
     )
-
-    formatted = service.format_analysis_for_telegram(analysis)
-    assert "Fontes consultadas (clique no link para acessar):" in formatted
-    # Todas as fontes devem ter tag <a> com href
-    assert '<a href="https://consultas.anvisa.gov.br/#/medicamentos/q/">Anvisa' in formatted
-    assert '<a href="https://www.gov.br/saude/pt-br">Ministério da Saúde' in formatted
-    assert '<a href="https://www.who.int/pt">Organização Mundial da Saúde' in formatted
+    formatted_no_links = service.format_analysis_for_telegram(analysis_no_links)
+    assert "Fontes consultadas:" in formatted_no_links
+    assert "nenhum artigo ou estudo comprova essa alegação" in formatted_no_links
+    assert "https://consultas.anvisa.gov.br" not in formatted_no_links
+    assert "https://www.gov.br/saude/pt-br" not in formatted_no_links

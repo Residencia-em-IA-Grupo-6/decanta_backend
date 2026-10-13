@@ -11,6 +11,30 @@ class Verdict(str, Enum):
     INCONCLUSIVO = "INCONCLUSIVO"
 
 
+class SourceTier(str, Enum):
+    """Níveis de credibilidade e autoridade das fontes de evidência."""
+    TIER1_OFFICIAL_OR_IFCN = "tier1_official_or_ifcn"
+    TIER2_MAINSTREAM_MEDIA = "tier2_mainstream_media"
+    TIER3_GENERAL_MEDIA = "tier3_general_media"
+    UNKNOWN = "unknown"
+
+
+class EvidenceItem(BaseModel):
+    """Evidência factual recuperada via Fact Check Tools ou Leitura Horizontal."""
+    title: str = Field(..., description="Título da matéria, comunicado ou desmentido")
+    source_name: str = Field(..., description="Nome do veículo de imprensa ou autoridade (ex: G1, Lupa, WHO, Anvisa)")
+    url: str = Field(..., description="Link da evidência")
+    snippet: str = Field(default="", description="Trecho ou resumo descritivo")
+    rating: str | None = Field(default=None, description="Classificação do checador (ex: Falso, Enganoso, Verdadeiro)")
+    is_fact_check: bool = Field(default=False, description="Indica se é de agência de checagem oficial")
+    published_date: str | None = Field(default=None, description="Data de publicação")
+    claim_reviewed: str | None = Field(default=None, description="Alegação original revisada pelo checador")
+    source_tier: str = Field(default=SourceTier.TIER2_MAINSTREAM_MEDIA.value, description="Nível de credibilidade da fonte")
+    is_relevant: bool = Field(default=True, description="Indica se o conteúdo tem relação temática direta com a alegação")
+    stance: str = Field(default="NEUTRAL", description="Posicionamento da evidência: SUPPORTS | REFUTES | NEUTRAL")
+
+
+
 class AnalyzeRequest(BaseModel):
     """
     Payload de entrada enviado pelo Bot do Telegram para análise.

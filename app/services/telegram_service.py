@@ -20,29 +20,8 @@ logger = logging.getLogger("factchkbr.telegram")
 
 URL_REGEX = re.compile(r"https?://(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b[-a-zA-Z0-9()@:%_\+.~#?&//=]*")
 
-# Portais e órgãos oficiais para links diretos de referência
-OFFICIAL_DEFAULT_SOURCES = [
-    ("Ministério da Saúde (Brasil)", "https://www.gov.br/saude/pt-br"),
-    ("Anvisa (Agência Nacional de Vigilância Sanitária)", "https://www.gov.br/anvisa/pt-br"),
-    ("Organização Mundial da Saúde (OMS)", "https://www.who.int/pt"),
-]
+from app.services.factcheck_corpus import is_homepage_url
 
-KNOWN_ENTITIES_LINKS = [
-    (re.compile(r"anvisa", re.IGNORECASE), "Anvisa (Consulta de Produtos e Medicamentos)", "https://consultas.anvisa.gov.br/#/medicamentos/q/"),
-    (re.compile(r"minist[ée]rio da sa[úu]de|ms\b", re.IGNORECASE), "Ministério da Saúde - Portal Oficial", "https://www.gov.br/saude/pt-br"),
-    (re.compile(r"fiocruz", re.IGNORECASE), "Fiocruz (Fundação Oswaldo Cruz)", "https://portal.fiocruz.br"),
-    (re.compile(r"\boms\b|organiza[çc][ãa]o mundial", re.IGNORECASE), "Organização Mundial da Saúde (OMS)", "https://www.who.int/pt"),
-    (re.compile(r"clinicaltrials", re.IGNORECASE), "ClinicalTrials.gov (Ensaios Clínicos Científicos)", "https://clinicaltrials.gov"),
-    (re.compile(r"europe pmc|pubmed", re.IGNORECASE), "Europe PMC (Biblioteca Médica e Científica)", "https://europepmc.org"),
-    (re.compile(r"fato ou fake|g1", re.IGNORECASE), "G1 Fato ou Fake", "https://g1.globo.com/fato-ou-fake/"),
-    (re.compile(r"lupa", re.IGNORECASE), "Agência Lupa", "https://lupa.uol.com.br"),
-    (re.compile(r"aos fatos", re.IGNORECASE), "Aos Fatos", "https://www.aosfatos.org"),
-    (re.compile(r"uol confere|uol", re.IGNORECASE), "UOL Confere", "https://noticias.uol.com.br/confere/"),
-    (re.compile(r"estad[ãa]o verifica|estad[ãa]o", re.IGNORECASE), "Estadão Verifica", "https://www.estadao.com.br/estadao-verifica/"),
-    (re.compile(r"folha", re.IGNORECASE), "Folha de S.Paulo", "https://www1.folha.uol.com.br"),
-    (re.compile(r"boatos\.org", re.IGNORECASE), "Boatos.org", "https://www.boatos.org"),
-    (re.compile(r"cfm|conselho federal de medicina", re.IGNORECASE), "Conselho Federal de Medicina (CFM)", "https://portal.cfm.org.br"),
-]
 
 
 def clean_text_for_public(text: str) -> str:
@@ -55,9 +34,9 @@ def clean_text_for_public(text: str) -> str:
     t = text.strip()
 
     # 1. Remove menções a modelos, algoritmos internos e bases de dados técnicas
-    t = re.sub(r"Base Vetorial FactChkBR(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
-    t = re.sub(r"ChromaDB(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
-    t = re.sub(r"banco vetorial(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?:,\s*)?(?:e\s+)?(?:a\s+|pela\s+|pelo\s+|na\s+|no\s+)?Base Vetorial FactChkBR(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?:,\s*)?(?:e\s+)?(?:a\s+|pela\s+|pelo\s+|na\s+|no\s+)?ChromaDB(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"(?:,\s*)?(?:e\s+)?(?:a\s+|pela\s+|pelo\s+|na\s+|no\s+)?banco vetorial(?:\s*\([^)]*\))?:?\s*", "", t, flags=re.IGNORECASE)
     t = re.sub(r"\(Similaridade:\s*\d+%\)", "", t, flags=re.IGNORECASE)
     t = re.sub(r"Similaridade:\s*\d+%", "", t, flags=re.IGNORECASE)
     t = re.sub(r"Avaliação fundamentada pelo classificador de decisão (?:Plumb-4B|JevK5-Lite):?\s*", "", t, flags=re.IGNORECASE)
@@ -120,22 +99,29 @@ def clean_text_for_public(text: str) -> str:
 def build_accessible_sources(sources: list[str]) -> list[str]:
     """
     Garante que todas as fontes exibidas possuam links clicáveis reais
-    e nomes em português claro, eliminando nomes de algoritmos internos.
+    e direcionem exclusivamente a artigos, estudos ou checagens específicas.
+    Páginas iniciais de portais, seções raiz genéricas e módulos técnicos internos
+    são terminantemente rejeitados.
     """
     results: list[str] = []
     seen_urls: set[str] = set()
+
     for s in sources:
+        if not s:
+            continue
         # Descarta algoritmos, módulos técnicos internos e bases de dados vetoriais
         if any(ign in s.lower() for ign in (
             "plumb", "jevk5", "laya", "heurística", "extrator", "spacy", "llm judge", "ollama",
-            "filtro de escopo", "base vetorial", "chromadb", "vector", "vetorial",
+            "filtro de escopo", "base vetorial", "chromadb", "vector", "vetorial", "decisão neural",
         )):
             continue
 
-        # 1. Se a fonte já traz uma URL
         url_match = URL_REGEX.search(s)
         if url_match:
             url = url_match.group(0).rstrip(".,;)")
+            # Rejeita terminantemente URLs de páginas iniciais / portais genéricos
+            if is_homepage_url(url):
+                continue
             if url in seen_urls:
                 continue
             seen_urls.add(url)
@@ -143,25 +129,12 @@ def build_accessible_sources(sources: list[str]) -> list[str]:
             name_part = s[:url_match.start()].strip(" :|-—")
             if not name_part or len(name_part) < 3:
                 domain = re.sub(r"^https?://(?:www\.)?", "", url).split("/")[0]
-                name_part = f"Matéria em {domain}"
-            name_clean = html.escape(name_part[:60])
+                name_part = f"Artigo / Checagem em {domain}"
+            name_clean = html.escape(name_part[:120])
             results.append(f'• 🔗 <a href="{url}">{name_clean}</a>')
-            continue
 
-        # 2. Se for um órgão ou veículo conhecido, associa ao link oficial correspondente
-        for pattern, label, url in KNOWN_ENTITIES_LINKS:
-            if pattern.search(s):
-                if url not in seen_urls:
-                    seen_urls.add(url)
-                    results.append(f'• 🔗 <a href="{url}">{html.escape(label)}</a>')
-                break
-
-    # 3. Se nenhuma fonte com link sobreviveu, fornece os portais oficiais de referência
     if not results:
-        for label, url in OFFICIAL_DEFAULT_SOURCES:
-            if url not in seen_urls:
-                seen_urls.add(url)
-                results.append(f'• 🔗 <a href="{url}">{html.escape(label)}</a>')
+        results.append("• <i>Busca ativa realizada em bases científicas e checagens oficiais — nenhum artigo ou estudo comprova essa alegação.</i>")
 
     return results[:4]
 
@@ -314,10 +287,14 @@ class TelegramService:
                     lines.append(f"• {html.escape(rk)}")
                 lines.append("")
 
-        # Fontes consultadas OBRIGATORIAMENTE COM LINK
+        # Fontes consultadas
         linked_sources = build_accessible_sources(analysis.sources)
         if linked_sources:
-            lines.append("🌐 <b>Fontes consultadas (clique no link para acessar):</b>")
+            has_clickable_links = any("<a href=" in s for s in linked_sources)
+            if has_clickable_links:
+                lines.append("🌐 <b>Fontes consultadas (clique no link para acessar o artigo):</b>")
+            else:
+                lines.append("🌐 <b>Fontes consultadas:</b>")
             lines.extend(linked_sources)
             lines.append("")
 

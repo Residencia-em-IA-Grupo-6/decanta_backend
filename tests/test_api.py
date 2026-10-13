@@ -36,3 +36,17 @@ def test_analyze_contract():
     assert "summary" in data
     assert "reasons" in data
     assert "sources" in data
+
+
+def test_analyze_stream_contract():
+    payload = {
+        "text": "Texto para teste de streaming com etapas.",
+        "urls": [],
+    }
+    with client.stream("POST", "/api/analyze/stream", json=payload) as response:
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+        lines = [line for line in response.iter_lines() if line]
+        assert len(lines) >= 1
+        assert any("data:" in l for l in lines)
+

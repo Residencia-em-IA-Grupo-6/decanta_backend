@@ -251,9 +251,14 @@ class SpacyPreprocessor:
         doc = self.nlp(text)
         has_verb = any(is_verb_like_token(t) for t in doc) or any(t.dep_ in ("nsubj", "nsubj:pass") for t in doc)
         has_content = any(t.pos_ in ("NOUN", "PROPN", "NUM") for t in doc) or any(entities.values())
+        has_claim_indicators = bool(
+            re.search(r"\b(?:venda|cura|remédio|remedio|tratamento|golpe|vacina|adesivo|chá|cha|dose|reais|r\$|benefício|perigo|risco)\b", text, re.IGNORECASE)
+            or any(t.pos_ == "NUM" for t in doc)
+            or any(entities.values())
+        )
         has_min_length = len(doc) >= 2
 
-        is_viable = has_verb and has_content and has_min_length
+        is_viable = (has_verb or has_claim_indicators) and has_content and has_min_length
         return entities, is_viable
 
 
