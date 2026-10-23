@@ -11,6 +11,8 @@ onnxruntime>=1.17.0
 transformers>=4.38.0
 numpy>=1.26.0
 chromadb>=0.4.0
-jevk5>=0.3.3
+jevk5 @ git+https://github.com/allebee/jevk5.git
+pt_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/pt_core_news_sm-3.8.0/pt_core_news_sm-3.8.0-py3-none-any.whl
+
 
 
