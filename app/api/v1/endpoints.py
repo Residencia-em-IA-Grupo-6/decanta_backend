@@ -42,17 +42,13 @@ async def analyze(
     formatted_telegram = telegram_service.format_analysis_for_telegram(response, original_text=request.text)
     response.telegram_formatted_text = formatted_telegram
 
-    # Entrega opcional e direta ao Telegram se chat_id foi fornecido
-    if request.chat_id is not None:
-        should_deliver = request.deliver_to_telegram or (
-            settings.TELEGRAM_AUTO_REPLY and telegram_service.is_configured
+    # Entrega opcional e direta ao Telegram apenas se explicitamente solicitada (deliver_to_telegram=True)
+    if request.chat_id is not None and request.deliver_to_telegram and telegram_service.is_configured:
+        delivery = await telegram_service.send_message(
+            chat_id=request.chat_id,
+            text=formatted_telegram,
         )
-        if should_deliver and telegram_service.is_configured:
-            delivery = await telegram_service.send_message(
-                chat_id=request.chat_id,
-                text=formatted_telegram,
-            )
-            response.telegram_delivery = delivery
+        response.telegram_delivery = delivery
 
     return response
 
@@ -105,16 +101,12 @@ async def analyze_stream(
                 formatted = telegram_service.format_analysis_for_telegram(res, original_text=request.text)
                 res.telegram_formatted_text = formatted
 
-                if request.chat_id is not None:
-                    should_deliver = request.deliver_to_telegram or (
-                        settings.TELEGRAM_AUTO_REPLY and telegram_service.is_configured
+                if request.chat_id is not None and request.deliver_to_telegram and telegram_service.is_configured:
+                    delivery = await telegram_service.send_message(
+                        chat_id=request.chat_id,
+                        text=formatted,
                     )
-                    if should_deliver and telegram_service.is_configured:
-                        delivery = await telegram_service.send_message(
-                            chat_id=request.chat_id,
-                            text=formatted,
-                        )
-                        res.telegram_delivery = delivery
+                    res.telegram_delivery = delivery
 
                 await queue.put({
                     "type": "complete",

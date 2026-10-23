@@ -245,23 +245,32 @@ def test_telegram_webhook_endpoint_security():
 
 
 def test_analyze_endpoint_returns_telegram_formatted_text():
-    """Valida se o endpoint padrão /api/analyze inclui o campo telegram_formatted_text."""
-    payload = {
-        "text": "O governo anunciou novo plano de incentivo fiscal.",
-        "urls": [],
-        "user_id": 123,
-        "chat_id": 456,
-        "deliver_to_telegram": False,
-    }
+    """Valida se o endpoint padrão /api/analyze inclui o campo telegram_formatted_text e não envia duplicado quando deliver_to_telegram=False."""
+    from app.config import get_settings
+    custom_settings = Settings(TELEGRAM_BOT_TOKEN="fake_token_12345", TELEGRAM_AUTO_REPLY=True)
+    app.dependency_overrides[get_settings] = lambda: custom_settings
 
-    resp = client.post("/api/analyze", json=payload)
-    assert resp.status_code == 200
-    data = resp.json()
+    try:
+        payload = {
+            "text": "O governo anunciou novo plano de incentivo fiscal.",
+            "urls": [],
+            "user_id": 123,
+            "chat_id": 456,
+            "deliver_to_telegram": False,
+        }
 
-    assert "telegram_formatted_text" in data
-    assert data["telegram_formatted_text"] is not None
-    assert "FACTCHKBR • CHECAGEM DE INFORMAÇÃO" in data["telegram_formatted_text"]
-    assert "Resultado:" in data["telegram_formatted_text"]
+        with patch.object(TelegramService, "send_message", new_callable=AsyncMock) as mock_send:
+            resp = client.post("/api/analyze", json=payload)
+            assert resp.status_code == 200
+            data = resp.json()
+
+            assert "telegram_formatted_text" in data
+            assert data["telegram_formatted_text"] is not None
+            assert "FACTCHKBR • CHECAGEM DE INFORMAÇÃO" in data["telegram_formatted_text"]
+            assert "Resultado:" in data["telegram_formatted_text"]
+            mock_send.assert_not_called()
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
 
 def test_telegram_sources_always_have_clickable_links():
